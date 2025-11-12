@@ -8,6 +8,7 @@ Google Apps Script that automates the paid-media resource capacity workflow for 
 - **Availability matrix:** `buildAvailabilityMatrix()` combines “Active staff” records and “Country Hours” to calculate each staffer’s monthly available hours, respecting start dates, FTE, and country-specific working hours.
 - **Capacity roll-up:** `buildFinalCapacity()` merges availability, schedules, and leave to calculate billable capacity, non-billable hours, TBH, and staffing metadata per resource/month.
 - **One-click refresh:** `refreshAll()` chains the entire workflow, surfaced through the custom “Paid Media Resourcing” menu (`onOpen()`).
+- **Region calendar automation:** `setupRegionConfigSheets()` scaffolds the working-pattern + holiday tables, and `buildAvailabilityMatrix()` now rebuilds the `Country Hours` tab from them before every run so existing formulas keep the same format.
 
 ## Repository Structure
 ```
@@ -18,6 +19,7 @@ code.gs   // Main Apps Script file (can be pasted into Apps Script or clasp proj
 1. **Spreadsheet**
    - Create a Google Sheet and add the tabs referenced by the script (e.g., `IMPORT-FF Schedules`, `Est vs Act - Import`, `Actuals - Import`, `Consolidated-FF Schedules`, `Active staff`, `Country Hours`).
    - Set the spreadsheet ID in `spreadsheetId` inside `importDataFromEmails()`.
+   - Populate `Region Calendar` + `Region Holidays`, then let the automation rebuild `Country Hours` (it keeps `Country | Month | Hours`, so existing lookups remain valid).
 
 2. **Gmail Labels**
    - Create Gmail labels that match the entries in the `emailConfigs` array (or adjust the array to your labels).
@@ -39,13 +41,14 @@ code.gs   // Main Apps Script file (can be pasted into Apps Script or clasp proj
   1. `Import & Transform` – runs the full pipeline (`refreshAll()`).
   2. `Build Availability` – recalculates the availability matrix only (useful after editing staff/hour sheets).
   3. `Build Capacity` – rebuilds the final capacity table after ad-hoc schedule tweaks.
+  4. `Scaffold Region Config Sheets` – (re)creates the `Region Calendar` and `Region Holidays` templates for maintaining working patterns and country-specific holidays.
 
 ### Scheduled
 - In Apps Script, go to **Triggers** and create a time-driven trigger on `refreshAll()` (e.g., daily after the reports arrive).
 
 ## Data Requirements
 - **Active staff:** Must contain headers matching the regexes the script looks for (Resource Name, Resource Country, Start Date, FTE, Hub, ResourceRole).
-- **Country Hours:** Columns for Country, Month (as `yyyy-MM`, `MMM-yy`, or `MM/yy`), and standard hours per month.
+- **Country Hours:** Still expected in the sheet, but the script now regenerates it automatically from the Region Calendar/Holidays tables and keeps the `Country | Month | Hours` structure.
 - **Consolidated schedules:** Row 2 headers for months (dates or formatted strings) and rows starting at row 3 with resource data.
 
 ## Troubleshooting

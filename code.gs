@@ -181,6 +181,7 @@ function transformData() {
 // ----- 2. Build availability matrix -----
 function buildAvailabilityMatrix() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  refreshCountryHoursFromRegion_(ss);
   var staffSheet = ss.getSheetByName('Active staff');
   var hoursSheet = ss.getSheetByName('Country Hours');
   if (!staffSheet || !hoursSheet) throw new Error('Missing staff or hours sheet');
@@ -192,7 +193,7 @@ function buildAvailabilityMatrix() {
   var hd = hoursSheet.getDataRange().getValues().slice(1), hmap = {};
   hd.forEach(function(r){
     var ct=r[0]+'', dt=r[1], hrs=parseFloat(r[2])||0;
-    var d = dt instanceof Date ? dt : parseMonthYear(dt);
+    var d = dt instanceof Date ? dt : parseMonthYearValue_(dt);
     var key = Utilities.formatDate(d, ss.getSpreadsheetTimeZone(), 'yyyy-MM');
     var c = COUNTRY_MAP[ct]||ct;
     hmap[c+'|'+key] = hrs;
@@ -204,10 +205,6 @@ function buildAvailabilityMatrix() {
   months.forEach(function(m,i){var d=new Date(m+'-01');out.getRange(1,i+2).setValue(d).setNumberFormat('MMM-yy');});
 
   function cw(s,e){var c=0;for(var d=new Date(s);d<=e;d.setDate(d.getDate()+1)){if(d.getDay()>0&&d.getDay()<6)c++;}return c;}
-  function parseMonthYear(s){var str=s+'';var m=str.match(/^(\d{1,2})[-\/](\d{2,4})$/);
-    if(m){var mm=parseInt(m[1],10)-1, yy=parseInt(m[2],10); if(yy<100)yy+=2000; return new Date(yy,mm,1);}return new Date(str);
-  }
-
   var outData=[];
   rows.forEach(function(r){
     var name=r[iName]+''; if(!name)return;
@@ -281,6 +278,7 @@ function onOpen() {
     .addItem('Import & Transform','refreshAll')
     .addItem('Build Availability (after adjusting team/hours)','buildAvailabilityMatrix')
     .addItem('Build Capacity (after adhoc schedule updates)','buildFinalCapacity')
+    .addItem('Scaffold Region Config Sheets','setupRegionConfigSheets')
     .addToUi();
 }
 
@@ -289,3 +287,256 @@ var COUNTRY_MAP = {
   'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
   'South Africa':'SA','Spain':'ES','Netherlands':'NL','Italy':'IT'
 };
+
+var DEFAULT_MONTH_RANGE_MONTHS = 36;
+
+/**
+ * Creates template sheets for working patterns and bank holidays so
+ * regional hours can be maintained without code changes.
+ */
+function setupRegionConfigSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var regionSheet = ensureSheet_(ss, 'Region Calendar');
+  var regionHeaders = [
+    'Region Code',
+    'Country Codes (comma separated)',
+    'Workweek Start (Mon=1 ... Sun=7)',
+    'Workweek End (Mon=1 ... Sun=7)',
+    'Hours Per Day'
+  ];
+  var regionExamples = [
+    ['UK', 'UK', 1, 5, 7.5],
+    ['EU-Central', 'DE,FR,NL', 1, 5, 8],
+    ['GCC', 'AE,SA', 7, 4, 8]
+  ];
+  writeTemplate_(regionSheet, regionHeaders, regionExamples);
+
+  var holidaysSheet = ensureSheet_(ss, 'Region Holidays');
+  var holidayHeaders = ['Country Code', 'Date', 'Holiday Name'];
+  var holidayExamples = [
+    ['UK', new Date('2025-01-01'), 'New Year\'s Day'],
+    ['DE', new Date('2025-10-03'), 'German Unity Day'],
+    ['AE', new Date('2025-03-31'), 'Eid al-Fitr (placeholder)']
+  ];
+  writeTemplate_(holidaysSheet, holidayHeaders, holidayExamples, [[2, 'yyyy-mm-dd']]);
+}
+
+function ensureSheet_(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function writeTemplate_(sheet, headers, rows, dateColumns) {
+  sheet.clear();
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  if (rows && rows.length) {
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  }
+  if (dateColumns && dateColumns.length) {
+    dateColumns.forEach(function(entry) {
+      var col = Array.isArray(entry) ? entry[0] : entry;
+      var fmt = Array.isArray(entry) && entry[1] ? entry[1] : 'yyyy-mm-dd';
+      sheet.getRange(2, col, Math.max(rows ? rows.length : 1, 1), 1).setNumberFormat(fmt);
+    });
+  }
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function refreshCountryHoursFromRegion_(ss) {
+  try {
+    var regionSheet = ss.getSheetByName('Region Calendar');
+    if (!regionSheet || regionSheet.getLastRow() < 2) return false;
+    var configs = extractRegionConfigs_(regionSheet);
+    if (!Object.keys(configs).length) return false;
+    var timezone = ss.getSpreadsheetTimeZone();
+    var holidays = extractHolidayMap_(ss.getSheetByName('Region Holidays'), timezone);
+    var countryHoursSheet = ensureSheet_(ss, 'Country Hours');
+    var months = determineMonthsToBuild_(ss, countryHoursSheet, timezone);
+    if (!months.length) return false;
+    var countries = Object.keys(configs).sort();
+    var rows = [];
+    months.forEach(function(monthKey){
+      countries.forEach(function(ct){
+        var hours = calculateMonthlyHours_(configs[ct], monthKey, holidays[ct], timezone);
+        rows.push([ct, monthKey, hours]);
+      });
+    });
+    countryHoursSheet.clear();
+    countryHoursSheet.getRange(1, 1, 1, 3).setValues([['Country','Month','Hours']]);
+    if (rows.length) {
+      countryHoursSheet.getRange(2, 1, rows.length, 3).setValues(rows);
+    }
+    countryHoursSheet.autoResizeColumns(1, 3);
+    return true;
+  } catch (err) {
+    Logger.log('Country Hours rebuild error: ' + err);
+    return false;
+  }
+}
+
+function extractRegionConfigs_(sheet) {
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {};
+  var headers = data[0];
+  var idxRegion = headers.indexOf('Region Code');
+  var idxCountries = headers.indexOf('Country Codes (comma separated)');
+  var idxStart = headers.indexOf('Workweek Start (Mon=1 ... Sun=7)');
+  var idxEnd = headers.indexOf('Workweek End (Mon=1 ... Sun=7)');
+  var idxHours = headers.indexOf('Hours Per Day');
+  var configs = {};
+  data.slice(1).forEach(function(row){
+    var countriesCell = idxCountries > -1 ? row[idxCountries] : '';
+    if (!countriesCell) return;
+    var hoursPerDay = idxHours > -1 ? parseFloat(row[idxHours]) || 0 : 0;
+    var startDow = idxStart > -1 ? parseInt(row[idxStart], 10) || 1 : 1;
+    var endDow = idxEnd > -1 ? parseInt(row[idxEnd], 10) || 5 : 5;
+    var regionCode = idxRegion > -1 ? (row[idxRegion] + '') : '';
+    (countriesCell + '').split(',').forEach(function(token){
+      var country = token.trim();
+      if (!country) return;
+      configs[country] = {
+        country: country,
+        region: regionCode,
+        hoursPerDay: hoursPerDay,
+        startDow: normalizeDow_(startDow),
+        endDow: normalizeDow_(endDow)
+      };
+    });
+  });
+  return configs;
+}
+
+function extractHolidayMap_(sheet, timezone) {
+  var map = {};
+  if (!sheet || sheet.getLastRow() < 2) return map;
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idxCountry = headers.indexOf('Country Code');
+  var idxDate = headers.indexOf('Date');
+  data.slice(1).forEach(function(row){
+    var country = idxCountry > -1 ? (row[idxCountry] + '').trim() : '';
+    if (!country) return;
+    var dateVal = idxDate > -1 ? row[idxDate] : null;
+    var dateObj = coerceToDate_(dateVal, timezone);
+    if (!dateObj) return;
+    var key = Utilities.formatDate(dateObj, timezone, 'yyyy-MM-dd');
+    if (!map[country]) map[country] = {};
+    map[country][key] = true;
+  });
+  return map;
+}
+
+function determineMonthsToBuild_(ss, countryHoursSheet, timezone) {
+  var monthSet = {};
+  function add(date) {
+    if (!date || isNaN(date)) return;
+    var key = Utilities.formatDate(new Date(date.getFullYear(), date.getMonth(), 1), timezone, 'yyyy-MM');
+    monthSet[key] = true;
+  }
+  if (countryHoursSheet && countryHoursSheet.getLastRow() > 1) {
+    var existing = countryHoursSheet.getRange(2, 2, countryHoursSheet.getLastRow() - 1, 1).getValues();
+    existing.forEach(function(row){
+      var dt = parseMonthYearValue_(row[0]);
+      if (dt) add(dt);
+    });
+  }
+  var scheduleSheet = ss.getSheetByName('Consolidated-FF Schedules');
+  if (scheduleSheet && scheduleSheet.getLastRow() >= 2) {
+    var lastCol = scheduleSheet.getLastColumn();
+    var headers = scheduleSheet.getRange(2, 1, 1, lastCol).getValues()[0];
+    for (var j = 7; j < lastCol; j++) {
+      var headerDate = coerceToDate_(headers[j], timezone);
+      if (headerDate) add(headerDate);
+    }
+  }
+  if (!Object.keys(monthSet).length) {
+    var start = new Date(new Date().getFullYear(), 0, 1);
+    for (var i = 0; i < DEFAULT_MONTH_RANGE_MONTHS; i++) {
+      add(new Date(start.getFullYear(), start.getMonth() + i, 1));
+    }
+  }
+  return Object.keys(monthSet).sort();
+}
+
+function calculateMonthlyHours_(config, monthKey, holidayMap, timezone) {
+  if (!config) return 0;
+  var monthDate = monthKeyToDate_(monthKey);
+  if (!monthDate) return 0;
+  var start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  var end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+  var workingDays = 0;
+  var cursor = new Date(start);
+  while (cursor <= end) {
+    var dow = cursor.getDay() === 0 ? 7 : cursor.getDay();
+    var dateKey = Utilities.formatDate(cursor, timezone, 'yyyy-MM-dd');
+    if (isWorkingDow_(dow, config.startDow, config.endDow) && !(holidayMap && holidayMap[dateKey])) {
+      workingDays++;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return workingDays * (config.hoursPerDay || 0);
+}
+
+function parseMonthYearValue_(value) {
+  if (!value) return null;
+  if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), 1);
+  var str = (value + '').trim();
+  if (!str) return null;
+  var iso = str.match(/^(\d{4})[-\/](\d{1,2})$/);
+  if (iso) return new Date(parseInt(iso[1],10), parseInt(iso[2],10)-1, 1);
+  var short = str.match(/^(\d{1,2})[-\/](\d{2,4})$/);
+  if (short) {
+    var mm = parseInt(short[1],10)-1;
+    var yy = parseInt(short[2],10);
+    if (yy < 100) yy += 2000;
+    return new Date(yy, mm, 1);
+  }
+  var dt = new Date(str);
+  return isNaN(dt) ? null : new Date(dt.getFullYear(), dt.getMonth(), 1);
+}
+
+function coerceToDate_(value, timezone) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  var str = (value + '').trim();
+  if (!str) return null;
+  if (/^[A-Za-z]{3}-\d{2}$/.test(str)) {
+    var parts = str.split('-');
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var idx = months.indexOf(parts[0]);
+    if (idx > -1) {
+      var year = 2000 + parseInt(parts[1], 10);
+      return new Date(year, idx, 1);
+    }
+  }
+  var dateMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (dateMatch) {
+    var d = parseInt(dateMatch[1],10);
+    var m = parseInt(dateMatch[2],10)-1;
+    var y = parseInt(dateMatch[3],10);
+    if (y < 100) y += 2000;
+    return new Date(y, m, d);
+  }
+  var parsed = new Date(str);
+  return isNaN(parsed) ? null : parsed;
+}
+
+function isWorkingDow_(dow, startDow, endDow) {
+  if (startDow <= endDow) return dow >= startDow && dow <= endDow;
+  return dow >= startDow || dow <= endDow;
+}
+
+function normalizeDow_(value) {
+  var v = parseInt(value, 10);
+  if (isNaN(v) || v < 1 || v > 7) return 1;
+  return v;
+}
+
+function monthKeyToDate_(key) {
+  if (!key) return null;
+  var parts = (key + '').split('-');
+  if (parts.length !== 2) return null;
+  var year = parseInt(parts[0], 10);
+  var month = parseInt(parts[1], 10) - 1;
+  if (isNaN(year) || isNaN(month)) return null;
+  return new Date(year, month, 1);
+}
