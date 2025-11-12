@@ -270,10 +270,14 @@ function buildFinalCapacity() {
   fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
   Object.keys(fullMap).forEach(k=>{var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{}; var bill=/VP/i.test(st.role)?0.5:/Director/i.test(st.role)?0.7:/Executive|Manager/i.test(st.role)?0.8:1;
     var f=fullMap[k], al=leave[k]||0, net=f-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
-    var mstr=Utilities.formatDate(new Date(m+'-01'),ss.getSpreadsheetTimeZone(),'MMM-yy');
-    out.push([n,st.hub,st.role,st.country,bill,st.practice,mstr,f,al,nb,tbh,sch,bc]);
+    var monthDate = new Date(m+'-01');
+    out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,f,al,nb,tbh,sch,bc]);
   });
-  if(out.length){fo.getRange(2,1,out.length,out[0].length).setValues(out); fo.getRange(2,5,out.length,1).setNumberFormat('0%');}
+  if(out.length){
+    fo.getRange(2,1,out.length,out[0].length).setValues(out);
+    fo.getRange(2,5,out.length,1).setNumberFormat('0%');
+    fo.getRange(2,7,out.length,1).setNumberFormat('mmm-yy');
+  }
 }
 
 // ----- 4. Wrapper to run full refresh -----
