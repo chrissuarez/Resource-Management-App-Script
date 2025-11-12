@@ -296,7 +296,6 @@ var DEFAULT_MONTH_RANGE_MONTHS = 36;
  */
 function setupRegionConfigSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var regionSheet = ensureSheet_(ss, 'Region Calendar');
   var regionHeaders = [
     'Region Code',
     'Country Codes (comma separated)',
@@ -309,16 +308,31 @@ function setupRegionConfigSheets() {
     ['EU-Central', 'DE,FR,NL', 1, 5, 8],
     ['GCC', 'AE,SA', 7, 4, 8]
   ];
-  writeTemplate_(regionSheet, regionHeaders, regionExamples);
+  var regionSheet = ss.getSheetByName('Region Calendar');
+  if (!regionSheet) {
+    regionSheet = ss.insertSheet('Region Calendar');
+  }
+  if (sheetHasOnlyTemplateData_(regionSheet, regionHeaders, regionExamples)) {
+    writeTemplate_(regionSheet, regionHeaders, regionExamples);
+  } else {
+    Logger.log('Skipping Region Calendar scaffold: existing data detected.');
+  }
 
-  var holidaysSheet = ensureSheet_(ss, 'Region Holidays');
   var holidayHeaders = ['Country Code', 'Date', 'Holiday Name'];
   var holidayExamples = [
     ['UK', new Date('2025-01-01'), 'New Year\'s Day'],
     ['DE', new Date('2025-10-03'), 'German Unity Day'],
     ['AE', new Date('2025-03-31'), 'Eid al-Fitr (placeholder)']
   ];
-  writeTemplate_(holidaysSheet, holidayHeaders, holidayExamples, [[2, 'yyyy-mm-dd']]);
+  var holidaysSheet = ss.getSheetByName('Region Holidays');
+  if (!holidaysSheet) {
+    holidaysSheet = ss.insertSheet('Region Holidays');
+  }
+  if (sheetHasOnlyTemplateData_(holidaysSheet, holidayHeaders, holidayExamples)) {
+    writeTemplate_(holidaysSheet, holidayHeaders, holidayExamples, [[2, 'yyyy-mm-dd']]);
+  } else {
+    Logger.log('Skipping Region Holidays scaffold: existing data detected.');
+  }
 }
 
 function ensureSheet_(ss, name) {
@@ -339,6 +353,40 @@ function writeTemplate_(sheet, headers, rows, dateColumns) {
     });
   }
   sheet.autoResizeColumns(1, headers.length);
+}
+
+function sheetHasOnlyTemplateData_(sheet, headers, templateRows) {
+  var colCount = headers.length;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return true;
+  var values = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
+  var dataRows = values.filter(function(row){
+    return row.some(function(cell){ return cell !== '' && cell !== null && !(typeof cell === 'number' && isNaN(cell)); });
+  });
+  if (!dataRows.length) return true;
+  if (!templateRows || !templateRows.length) return false;
+  if (dataRows.length !== templateRows.length) return false;
+  var templateStrings = templateRows.map(function(r){return normalizeRowValues_(r, colCount);}).sort();
+  var sheetStrings = dataRows.map(function(r){return normalizeRowValues_(r, colCount);}).sort();
+  for (var i = 0; i < sheetStrings.length; i++) {
+    if (sheetStrings[i] !== templateStrings[i]) return false;
+  }
+  return true;
+}
+
+function normalizeRowValues_(row, colCount) {
+  var parts = [];
+  for (var i = 0; i < colCount; i++) {
+    var value = row[i];
+    if (value instanceof Date) {
+      parts.push(value.getTime());
+    } else if (value === null || typeof value === 'undefined') {
+      parts.push('');
+    } else {
+      parts.push((value + '').trim());
+    }
+  }
+  return parts.join('|');
 }
 
 function refreshCountryHoursFromRegion_(ss) {

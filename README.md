@@ -8,7 +8,7 @@ Google Apps Script that automates the paid-media resource capacity workflow for 
 - **Availability matrix:** `buildAvailabilityMatrix()` combines “Active staff” records and “Country Hours” to calculate each staffer’s monthly available hours, respecting start dates, FTE, and country-specific working hours.
 - **Capacity roll-up:** `buildFinalCapacity()` merges availability, schedules, and leave to calculate billable capacity, non-billable hours, TBH, and staffing metadata per resource/month.
 - **One-click refresh:** `refreshAll()` chains the entire workflow, surfaced through the custom “Paid Media Resourcing” menu (`onOpen()`).
-- **Region calendar automation:** `setupRegionConfigSheets()` scaffolds the working-pattern + holiday tables, and `buildAvailabilityMatrix()` now rebuilds the `Country Hours` tab from them before every run so existing formulas keep the same format.
+- **Region calendar automation:** `setupRegionConfigSheets()` only creates the working-pattern + holiday tables when they're empty/template, and `buildAvailabilityMatrix()` rebuilds the `Country Hours` tab from them before every run so existing formulas keep the same format.
 
 ## Repository Structure
 ```
@@ -41,7 +41,7 @@ code.gs   // Main Apps Script file (can be pasted into Apps Script or clasp proj
   1. `Import & Transform` – runs the full pipeline (`refreshAll()`).
   2. `Build Availability` – recalculates the availability matrix only (useful after editing staff/hour sheets).
   3. `Build Capacity` – rebuilds the final capacity table after ad-hoc schedule tweaks.
-  4. `Scaffold Region Config Sheets` – (re)creates the `Region Calendar` and `Region Holidays` templates for maintaining working patterns and country-specific holidays.
+  4. `Scaffold Region Config Sheets` – fills the template tabs only if they're missing or still contain the sample data, preventing accidental overwrites of real configs.
 
 ### Scheduled
 - In Apps Script, go to **Triggers** and create a time-driven trigger on `refreshAll()` (e.g., daily after the reports arrive).
