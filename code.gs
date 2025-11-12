@@ -192,11 +192,12 @@ function buildAvailabilityMatrix() {
 
   var hd = hoursSheet.getDataRange().getValues().slice(1), hmap = {};
   hd.forEach(function(r){
-    var ct=r[0]+'', dt=r[1], hrs=parseFloat(r[2])||0;
+    var ct = normalizeCountryCode_(r[0]);
+    if (!ct) return;
+    var dt = r[1], hrs = parseFloat(r[2]) || 0;
     var d = dt instanceof Date ? dt : parseMonthYearValue_(dt);
     var key = Utilities.formatDate(d, ss.getSpreadsheetTimeZone(), 'yyyy-MM');
-    var c = COUNTRY_MAP[ct]||ct;
-    hmap[c+'|'+key] = hrs;
+    hmap[ct+'|'+key] = hrs;
   });
   var months = Object.keys(hmap).map(k=>k.split('|')[1]).filter((v,i,a)=>a.indexOf(v)===i).sort();
 
@@ -208,13 +209,14 @@ function buildAvailabilityMatrix() {
   var outData=[];
   rows.forEach(function(r){
     var name=r[iName]+''; if(!name)return;
-    var ct=r[iCountry]+''; var st=r[iStart]?new Date(r[iStart]):null;
+    var ctCode=normalizeCountryCode_(r[iCountry]);
+    var st=r[iStart]?new Date(r[iStart]):null;
     var f=parseFloat(r[iFTE])||0;
     var row=[name];
     months.forEach(function(m){
       var ms=new Date(m+'-01'), me=new Date(ms.getFullYear(),ms.getMonth()+1,0);
       var key=Utilities.formatDate(ms,ss.getSpreadsheetTimeZone(),'yyyy-MM');
-      var wh=hmap[(COUNTRY_MAP[ct]||ct)+'|'+key]||0;
+      var wh=ctCode? (hmap[ctCode+'|'+key]||0):0;
       var tot=cw(ms,me);
       var av=!st?tot:(st>me?0:(st<=ms?tot:cw(st,me)));
       row.push(av? (f*wh)*(av/tot): '');
@@ -236,9 +238,20 @@ function buildFinalCapacity() {
   function fi(p){return sh.findIndex(h=>p.some(x=>new RegExp(x,'i').test(h)));}
   var iRes = fi(['ResourceName']), iRR=fi(['ResourceRole']), iHub=fi(['Hub']), iC=fi(['Resource Country']);
   var staffMap={};
-  sr.forEach(function(r){var n=r[iRes]+''; if(n){var pr=r[iRR]+''; var ps=pr.split('-');
-    staffMap[n]={hub:r[iHub]+'',practice:ps[0].trim(),role:ps[1]?ps.slice(1).join('-').trim():'',country:r[iC]+''};
-  }});
+  sr.forEach(function(r){
+    var n=r[iRes]+''; if(!n) return;
+    var pr=r[iRR]+''; var ps=pr.split('-');
+    var countryOriginal=r[iC]+'';
+    var countryCode=normalizeCountryCode_(countryOriginal);
+    staffMap[n]={
+      hub:r[iHub]+'',
+      practice:ps[0].trim(),
+      role:ps[1]?ps.slice(1).join('-').trim():'',
+      countryOriginal:countryOriginal,
+      countryCode:countryCode,
+      country:formatCountryDisplay_(countryOriginal,countryCode)
+    };
+  });
 
   var ad=avail.getDataRange().getValues(), am=ad[0].slice(1).map(d=>Utilities.formatDate(new Date(d),ss.getSpreadsheetTimeZone(),'yyyy-MM'));
   var fullMap={}; ad.slice(1).forEach(r=>{var n=r[0]+''; r.slice(1).forEach((v,i)=>{fullMap[n+'|'+am[i]]=parseFloat(v)||0;});});
@@ -285,8 +298,30 @@ function onOpen() {
 /** Country mapping **/
 var COUNTRY_MAP = {
   'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
-  'South Africa':'SA','Spain':'ES','Netherlands':'NL','Italy':'IT'
+  'South Africa':'ZA','Spain':'ES','Netherlands':'NL','Italy':'IT',
+  'SA':'ZA','ZA':'ZA'
 };
+var COUNTRY_DISPLAY_OVERRIDES = {
+  'ZA':'South Africa'
+};
+
+function normalizeCountryCode_(value) {
+  if (value === null || typeof value === 'undefined') return '';
+  var str = (value + '').trim();
+  if (!str) return '';
+  if (str.length === 2) str = str.toUpperCase();
+  return COUNTRY_MAP[str] || str;
+}
+
+function formatCountryDisplay_(original, canonical) {
+  var code = canonical || normalizeCountryCode_(original);
+  var base = COUNTRY_DISPLAY_OVERRIDES[code] || original || code;
+  if (code && COUNTRY_DISPLAY_OVERRIDES[code]) {
+    return base + ' (' + code + ')';
+  }
+  return base || code;
+}
+
 
 var DEFAULT_MONTH_RANGE_MONTHS = 36;
 
@@ -401,17 +436,17 @@ function refreshCountryHoursFromRegion_(ss) {
     var months = determineMonthsToBuild_(ss, countryHoursSheet, timezone);
     if (!months.length) return false;
     var countries = Object.keys(configs).sort();
-    var rows = [];
+    var outputRows = [];
     months.forEach(function(monthKey){
       countries.forEach(function(ct){
         var hours = calculateMonthlyHours_(configs[ct], monthKey, holidays[ct], timezone);
-        rows.push([ct, monthKey, hours]);
+        outputRows.push([ct, monthKey, hours]);
       });
     });
     countryHoursSheet.clear();
     countryHoursSheet.getRange(1, 1, 1, 3).setValues([['Country','Month','Hours']]);
-    if (rows.length) {
-      countryHoursSheet.getRange(2, 1, rows.length, 3).setValues(rows);
+    if (outputRows.length) {
+      countryHoursSheet.getRange(2, 1, outputRows.length, 3).setValues(outputRows);
     }
     countryHoursSheet.autoResizeColumns(1, 3);
     return true;
@@ -441,8 +476,10 @@ function extractRegionConfigs_(sheet) {
     (countriesCell + '').split(',').forEach(function(token){
       var country = token.trim();
       if (!country) return;
-      configs[country] = {
-        country: country,
+      var canonical = normalizeCountryCode_(country);
+      if (!canonical) return;
+      configs[canonical] = {
+        country: canonical,
         region: regionCode,
         hoursPerDay: hoursPerDay,
         startDow: normalizeDow_(startDow),
@@ -461,14 +498,15 @@ function extractHolidayMap_(sheet, timezone) {
   var idxCountry = headers.indexOf('Country Code');
   var idxDate = headers.indexOf('Date');
   data.slice(1).forEach(function(row){
-    var country = idxCountry > -1 ? (row[idxCountry] + '').trim() : '';
-    if (!country) return;
+    var countryRaw = idxCountry > -1 ? (row[idxCountry] + '').trim() : '';
+    var canonical = normalizeCountryCode_(countryRaw);
+    if (!canonical) return;
     var dateVal = idxDate > -1 ? row[idxDate] : null;
     var dateObj = coerceToDate_(dateVal, timezone);
     if (!dateObj) return;
     var key = Utilities.formatDate(dateObj, timezone, 'yyyy-MM-dd');
-    if (!map[country]) map[country] = {};
-    map[country][key] = true;
+    if (!map[canonical]) map[canonical] = {};
+    map[canonical][key] = true;
   });
   return map;
 }

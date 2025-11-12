@@ -9,6 +9,7 @@ Google Apps Script that automates the paid-media resource capacity workflow for 
 - **Capacity roll-up:** `buildFinalCapacity()` merges availability, schedules, and leave to calculate billable capacity, non-billable hours, TBH, and staffing metadata per resource/month.
 - **One-click refresh:** `refreshAll()` chains the entire workflow, surfaced through the custom “Paid Media Resourcing” menu (`onOpen()`).
 - **Region calendar automation:** `setupRegionConfigSheets()` only creates the working-pattern + holiday tables when they're empty/template, and `buildAvailabilityMatrix()` rebuilds the `Country Hours` tab from them before every run so existing formulas keep the same format.
+- **Country code normalization:** Names/codes such as `South Africa`, `SA`, and `ZA` are treated as the same country so availability/capacity hours stay aligned and the report can show the preferred label.
 
 ## Repository Structure
 ```
