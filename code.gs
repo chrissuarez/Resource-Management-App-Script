@@ -9,23 +9,23 @@ function importDataFromEmails() {
   try {
     var emailConfigs = [
       {
-        label: 'dashboard-reports-paid-media---emea-schedules',
+        label: 'dashboard-reports-earned-media-schdules',
         sheetName: 'IMPORT-FF Schedules',
         encoding: 'ISO-8859-1' // Original encoding
       },
       {
-        label: 'dashboard-reports-paid-media-est-vs-actuals-emea',
+        label: 'dashboard-reports-earned-media---est-vs-actual ',
         sheetName: 'Est vs Act - Import',
         encoding: 'ISO-8859-1' // Original encoding
       },
       {
-        label: 'dashboard-reports-paid-media-timecards-emea', // Your new label
+        label: 'dashboard-reports-earned-media-timecards-with-projects', // Your new label
         sheetName: 'Actuals - Import',                        // Your new target sheet
         encoding: 'ISO-8859-1' // Assuming UTF-8 for this new source, adjust if needed
       }
     ];
     // IMPORTANT: Use the ID of your spreadsheet
-    var spreadsheetId = '1WuMWJaB5iBYQx0pQntuaPJIZrDYFKMUaRPcF4t_lru8'; 
+    var spreadsheetId = '1cGmsuiFi3rtByc_SXgwyNgjZFzIE0rOVWffemg04Zd4'; 
     var ss = SpreadsheetApp.openById(spreadsheetId);
 
     emailConfigs.forEach(function(config) {
@@ -291,7 +291,7 @@ function refreshAll() {
 // ----- 5. Add custom menu -----
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('Paid Media Resourcing')
+    .createMenu('Earned Media Resourcing')
     .addItem('Import & Transform','refreshAll')
     .addItem('Build Availability (after adjusting team/hours)','buildAvailabilityMatrix')
     .addItem('Build Capacity (after adhoc schedule updates)','buildFinalCapacity')
@@ -308,6 +308,8 @@ var COUNTRY_MAP = {
 var COUNTRY_DISPLAY_OVERRIDES = {
   'ZA':'South Africa'
 };
+
+var REGION_CALENDAR_SPREADSHEET_ID = '1cGmsuiFi3rtByc_SXgwyNgjZFzIE0rOVWffemg04Zd4';
 
 function normalizeCountryCode_(value) {
   if (value === null || typeof value === 'undefined') return '';
@@ -328,6 +330,16 @@ function formatCountryDisplay_(original, canonical) {
 
 
 var DEFAULT_MONTH_RANGE_MONTHS = 36;
+
+function getRegionCalendarSpreadsheetId_(ss) {
+  var fallback = typeof REGION_CALENDAR_SPREADSHEET_ID !== 'undefined' ? REGION_CALENDAR_SPREADSHEET_ID : '';
+  var configSheet = ss.getSheetByName('Config');
+  if (!configSheet) return fallback;
+  var raw = (configSheet.getRange('C5').getDisplayValue() + '').trim();
+  if (!raw) return fallback;
+  var match = raw.match(/[-\w]{25,}/);
+  return match ? match[0] : raw;
+}
 
 /**
  * Creates template sheets for working patterns and bank holidays so
@@ -430,12 +442,15 @@ function normalizeRowValues_(row, colCount) {
 
 function refreshCountryHoursFromRegion_(ss) {
   try {
-    var regionSheet = ss.getSheetByName('Region Calendar');
+    var regionId = getRegionCalendarSpreadsheetId_(ss);
+    var regionSource = regionId ? SpreadsheetApp.openById(regionId) : ss;
+    var regionSheet = regionSource.getSheetByName('Region Calendar');
     if (!regionSheet || regionSheet.getLastRow() < 2) return false;
     var configs = extractRegionConfigs_(regionSheet);
     if (!Object.keys(configs).length) return false;
     var timezone = ss.getSpreadsheetTimeZone();
-    var holidays = extractHolidayMap_(ss.getSheetByName('Region Holidays'), timezone);
+    var holidaysSheet = regionSource.getSheetByName('Region Holidays');
+    var holidays = extractHolidayMap_(holidaysSheet, timezone);
     var countryHoursSheet = ensureSheet_(ss, 'Country Hours');
     var months = determineMonthsToBuild_(ss, countryHoursSheet, timezone);
     if (!months.length) return false;
