@@ -24,8 +24,7 @@ function importDataFromEmails() {
         encoding: 'ISO-8859-1' // Assuming UTF-8 for this new source, adjust if needed
       }
     ];
-    // IMPORTANT: Use the ID of your spreadsheet
-    var spreadsheetId = '1cGmsuiFi3rtByc_SXgwyNgjZFzIE0rOVWffemg04Zd4'; 
+    var spreadsheetId = getSpreadsheetIdFromConfig_();
     var ss = SpreadsheetApp.openById(spreadsheetId);
 
     emailConfigs.forEach(function(config) {
@@ -234,6 +233,45 @@ function buildFinalCapacity() {
   var staff = ss.getSheetByName('Active staff');
   if(!avail||!sched||!staff) throw new Error('Missing sheets');
 
+  function parseBillableValue_(value) {
+    if (value === null || typeof value === 'undefined') return null;
+    if (typeof value === 'number') {
+      if (isNaN(value)) return null;
+      return value > 1 ? value / 100 : value;
+    }
+    var str = (value + '').trim();
+    if (!str) return null;
+    var cleaned = str.replace(/%/g, '');
+    var num = parseFloat(cleaned);
+    if (isNaN(num)) return null;
+    if (str.indexOf('%') > -1 || num > 1) {
+      return num / 100;
+    }
+    return num;
+  }
+
+  var roleSheet = ss.getSheetByName('Role Config');
+  var billableMap = {};
+  var defaultBillable = 1;
+  if (roleSheet) {
+    var lastRoleRow = roleSheet.getLastRow();
+    if (lastRoleRow >= 2) {
+      var roleValues = roleSheet.getRange(2, 1, lastRoleRow - 1, 2).getValues();
+      roleValues.forEach(function(row) {
+        var roleName = (row[0] + '').trim();
+        if (!roleName) return;
+        var value = parseBillableValue_(row[1]);
+        if (value === null) return;
+        var key = roleName.toLowerCase();
+        if (key === '(default)') {
+          defaultBillable = value;
+        } else {
+          billableMap[key] = value;
+        }
+      });
+    }
+  }
+
   var sd = staff.getDataRange().getValues(), sh=sd[0], sr=sd.slice(1);
   function fi(p){return sh.findIndex(h=>p.some(x=>new RegExp(x,'i').test(h)));}
   var iRes = fi(['ResourceName']), iRR=fi(['ResourceRole']), iHub=fi(['Hub']), iC=fi(['Resource Country']);
@@ -268,7 +306,10 @@ function buildFinalCapacity() {
   var fo=ss.getSheetByName('Final - Capacity')||ss.insertSheet('Final - Capacity'); fo.clear();
   var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','Sched Hrs','Billable Capacity'];
   fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
-  Object.keys(fullMap).forEach(k=>{var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{}; var bill=/VP/i.test(st.role)?0.5:/Director/i.test(st.role)?0.7:/Executive|Manager/i.test(st.role)?0.8:1;
+  Object.keys(fullMap).forEach(function(k){
+    var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{};
+    var resourceRole=(st.role||'').toLowerCase();
+    var bill=billableMap.hasOwnProperty(resourceRole)?billableMap[resourceRole]:defaultBillable;
     var f=fullMap[k], al=leave[k]||0, net=f-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
     var monthDate = new Date(m+'-01');
     out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,f,al,nb,tbh,sch,bc]);
@@ -319,6 +360,18 @@ var COUNTRY_DISPLAY_OVERRIDES = {
 };
 
 var REGION_CALENDAR_SPREADSHEET_ID = '1cGmsuiFi3rtByc_SXgwyNgjZFzIE0rOVWffemg04Zd4';
+
+function getSpreadsheetIdFromConfig_() {
+  var active = SpreadsheetApp.getActiveSpreadsheet();
+  if (!active) return '';
+  var fallback = active.getId();
+  var configSheet = active.getSheetByName('Config');
+  if (!configSheet) return fallback;
+  var raw = (configSheet.getRange('C24').getDisplayValue() + '').trim();
+  if (!raw) return fallback;
+  var match = raw.match(/[-\w]{25,}/);
+  return match ? match[0] : raw;
+}
 
 function normalizeCountryCode_(value) {
   if (value === null || typeof value === 'undefined') return '';
