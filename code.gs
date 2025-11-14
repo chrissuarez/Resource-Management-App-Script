@@ -462,6 +462,44 @@ function ensureSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
+function getConfigSettings() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+  var configData = configSheet ? configSheet.getRange('B:C').getDisplayValues() : [];
+
+  function getConfigValue(keyToFind) {
+    if (!configData || !configData.length) return null;
+    for (var i = 0; i < configData.length; i++) {
+      var row = configData[i];
+      if ((row[0] + '').trim() === keyToFind) {
+        var value = row[1];
+        return value !== undefined && value !== null ? (value + '').trim() : '';
+      }
+    }
+    return null;
+  }
+
+  var settings = {
+    sheetNames: {
+      roleConfig: getConfigValue('Role Config Sheet') || 'Role Config',
+      consolidatedSchedules: getConfigValue('Consolidated Schedules Sheet') || 'Consolidated-FF Schedules',
+      finalSchedules: getConfigValue('Final Schedules Sheet') || 'Final - Schedules',
+      staff: getConfigValue('Staff Sheet') || 'Active staff',
+      countryHours: getConfigValue('Country Hours Sheet') || 'Country Hours',
+      availabilityMatrix: getConfigValue('Availability Matrix Sheet') || 'Availability Matrix',
+      finalCapacity: getConfigValue('Final Capacity Sheet') || 'Final - Capacity'
+    },
+    sheetConfig: {
+      dataStartColumn: parseInt(getConfigValue('Data Start Column'), 10) || 8
+    },
+    projectNames: {
+      leaveProject: getConfigValue('Leave Project Name') || 'JFGP All Leave'
+    }
+  };
+
+  return settings;
+}
+
 function ensureRoleConfigSheet_(ss) {
   var sheet = ss.getSheetByName('Role Config');
   if (sheet) return sheet;
