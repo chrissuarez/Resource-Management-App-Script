@@ -7,25 +7,35 @@
 // ----- 0. Import schedules and actuals from email -----
 function importDataFromEmails() {
   try {
-    var emailConfigs = [
-      {
-        label: 'dashboard-reports-earned-media-schdules',
-        sheetName: 'IMPORT-FF Schedules',
-        encoding: 'ISO-8859-1' // Original encoding
-      },
-      {
-        label: 'dashboard-reports-earned-media---est-vs-actual ',
-        sheetName: 'Est vs Act - Import',
-        encoding: 'ISO-8859-1' // Original encoding
-      },
-      {
-        label: 'dashboard-reports-earned-media-timecards-with-projects', // Your new label
-        sheetName: 'Actuals - Import',                        // Your new target sheet
-        encoding: 'ISO-8859-1' // Assuming UTF-8 for this new source, adjust if needed
+    var ss = SpreadsheetApp.openById(getSpreadsheetIdFromConfig_());
+    var configSheet = ss.getSheetByName('Config');
+    var emailConfigs = [];
+    if (configSheet) {
+      var startRow = 10;
+      var startCol = 2; // table starts at column B
+      var lastRow = configSheet.getLastRow();
+      if (lastRow >= startRow) {
+        var configData = configSheet.getRange(startRow, startCol, lastRow - startRow + 1, 4).getValues();
+        configData.forEach(function(row) {
+          var type = (row[0] + '').trim();
+          if (type !== 'Email Import') return;
+          var label = (row[1] + '').trim();
+          var sheetName = (row[2] + '').trim();
+          if (!label || !sheetName) return;
+          var encoding = (row[3] + '').trim() || 'UTF-8';
+          emailConfigs.push({
+            label: label,
+            sheetName: sheetName,
+            encoding: encoding
+          });
+        });
       }
-    ];
-    var spreadsheetId = getSpreadsheetIdFromConfig_();
-    var ss = SpreadsheetApp.openById(spreadsheetId);
+    }
+
+    if (!emailConfigs.length) {
+      Logger.log('No Email Import configurations found in Config sheet.');
+      return;
+    }
 
     emailConfigs.forEach(function(config) {
       Logger.log('Processing label: ' + config.label + ' for sheet: ' + config.sheetName);
