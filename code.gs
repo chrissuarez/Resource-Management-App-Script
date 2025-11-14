@@ -233,6 +233,7 @@ function buildFinalCapacity() {
   var staff = ss.getSheetByName('Active staff');
   if(!avail||!sched||!staff) throw new Error('Missing sheets');
 
+  var roleSheet = ensureRoleConfigSheet_(ss);
   function parseBillableValue_(value) {
     if (value === null || typeof value === 'undefined') return null;
     if (typeof value === 'number') {
@@ -250,7 +251,6 @@ function buildFinalCapacity() {
     return num;
   }
 
-  var roleSheet = ss.getSheetByName('Role Config');
   var billableMap = {};
   var defaultBillable = 1;
   if (roleSheet) {
@@ -450,6 +450,24 @@ function setupRegionConfigSheets() {
 
 function ensureSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function ensureRoleConfigSheet_(ss) {
+  var sheet = ss.getSheetByName('Role Config');
+  if (sheet) return sheet;
+  sheet = ss.insertSheet('Role Config');
+  var headers = ['Role', 'Billable %'];
+  var rows = [
+    ['(default)', '100%'],
+    ['VP', '50%'],
+    ['Director', '70%'],
+    ['Executive', '80%'],
+    ['Manager', '80%']
+  ];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  sheet.autoResizeColumns(1, headers.length);
+  return sheet;
 }
 
 function writeTemplate_(sheet, headers, rows, dateColumns) {
