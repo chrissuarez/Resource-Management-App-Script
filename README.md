@@ -10,6 +10,7 @@ Google Apps Script that automates the paid-media resource capacity workflow for 
 - **One-click refresh:** `refreshAll()` chains the entire workflow, surfaced through the custom “Paid Media Resourcing” menu (`onOpen()`).
 - **Region calendar automation:** `setupRegionConfigSheets()` only creates the working-pattern + holiday tables when they're empty/template, and `buildAvailabilityMatrix()` rebuilds the `Country Hours` tab from them before every run so existing formulas keep the same format.
 - **Country code normalization:** Names/codes such as `South Africa`, `SA`, and `ZA` are treated as the same country so availability/capacity hours stay aligned and the report can show the preferred label.
+- **Country coverage:** When new markets are added, update `COUNTRY_MAP`/`COUNTRY_DISPLAY_OVERRIDES` in `code.gs` (and the central Region Calendar/Holidays) so the pipeline recognizes their codes, hours, and holidays.
 
 ## Repository Structure
 ```

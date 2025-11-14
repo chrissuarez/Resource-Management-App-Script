@@ -303,10 +303,19 @@ function onOpen() {
 var COUNTRY_MAP = {
   'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
   'South Africa':'ZA','Spain':'ES','Netherlands':'NL','Italy':'IT',
+  'United Arab Emirates':'AE','UAE':'AE','AE':'AE',
+  'Australia':'AU','AU':'AU',
+  'Israel':'IL','IL':'IL',
+  'India':'IN','IN':'IN',
+  'Mexico':'MX','MX':'MX',
+  'United States':'US','USA':'US','US':'US',
+  'Japan':'JP','JP':'JP',
   'SA':'ZA','ZA':'ZA'
 };
 var COUNTRY_DISPLAY_OVERRIDES = {
-  'ZA':'South Africa'
+  'ZA':'South Africa',
+  'AE':'United Arab Emirates',
+  'US':'United States'
 };
 
 var REGION_CALENDAR_SPREADSHEET_ID = '1cGmsuiFi3rtByc_SXgwyNgjZFzIE0rOVWffemg04Zd4';
