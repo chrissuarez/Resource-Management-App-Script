@@ -2,7 +2,9 @@
 
 You are helping me refactor a Google Apps Script file (code.gs) for a resource management spreadsheet. The goal is to make the script versatile so it can be easily adapted by other teams.
 
-Currently, the script has team-specific business logic, sheet names, and email labels hard-coded directly into the code. We need to refactor this by moving all this configuration into the spreadsheet itself (primarily into a sheet named Config), turning code.gs into a generic "engine" that reads its instructions from the spreadsheet.
+We have already refactored the importDataFromEmails function to read its settings from the Config sheet.
+
+Now, we must continue refactoring the rest of the script to move all other hard-coded, team-specific logic into the Config sheet, turning code.gs into a generic "engine."
 
 Your Task & Rules:  
 I will break this refactor into several phases.
@@ -11,14 +13,16 @@ I will break this refactor into several phases.
 2. You will complete *only* the single phase I request.  
 3. After you provide the modified code for that phase, **stop and wait for my approval.**  
 4. Once I approve, I will give you the prompt for the next phase.  
-5. For each new phase, we will create a new git branch (e.g., phase-1-role-config, phase-2-email-refactor) to preserve the previous working version.
+5. For each new phase, we will create a new git branch (e.g., phase-3-role-config, phase-4-transform-refactor) to preserve the previous working version.
 
-### **Phase 1: Abstract Billable Rate Logic**
+### **Phase 3: Abstract Billable Rate Logic**
 
-**Branch:** phase-1-role-config
+**(This was our original Phase 1\. The code file shows it was skipped, so we must do it now.)**
+
+**Branch:** phase-3-role-config
 
 Goal:  
-The buildFinalCapacity function calculates a resource's billable percentage (Bill %) using hard-coded logic. We will move this logic to a new sheet named Role Config.  
+The buildFinalCapacity function calculates a resource's billable percentage (Bill %) using hard-coded logic \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 316\]. We will move this logic to a new sheet named Role Config.  
 **Current Hard-Coded Logic (in buildFinalCapacity):**
 
 var bill=/VP/i.test(st.role)?0.5:/Director/i.test(st.role)?0.7:/Executive|Manager/i.test(st.role)?0.8:1;
@@ -29,152 +33,167 @@ Modify the buildFinalCapacity function to read from a new sheet named Role Confi
 1. **Assume** a new sheet named Role Config exists in the spreadsheet. This sheet has two columns:  
    * Column A: Role (e.g., "VP \+", "Senior Director", "Director", "Manager", "(default)")  
    * Column B: Billable % (e.g., "50%", "70%", "80%", "100%")  
-2. **Inside buildFinalCapacity**, before the main loop, read the entire Role Config sheet (from row 2 to the end).  
+2. **Inside buildFinalCapacity**, before the main loop \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 316\], add code to read the entire Role Config sheet (from row 2 to the end).  
 3. **Create a JavaScript Map** or plain object (e.g., billableMap) from this data.  
    * Store the role from Column A as the key (in lowercase).  
    * Store the percentage from Column B as the value (as a decimal, e.g., 0.5).  
    * Look for a (default) role and store its value to be used as a fallback. If no (default) is found, use 1 (100%) as the fallback.  
-4. **Replace** the hard-coded var bill=... line with new logic.  
+4. **Replace** the hard-coded var bill=... line \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 316\] with new logic.  
    * Get the resource's role: var resourceRole \= (st.role || '').toLowerCase();  
    * Look up this resourceRole in your billableMap.  
    * Set the bill variable to the found value, or to the default fallback value if the role isn't in the map.
 
 Please provide the *entire modified buildFinalCapacity function* for my review.
 
-### **Phase 2: Abstract Email Import Configuration**
-
-**(Wait for user approval of Phase 1 before proceeding)**
-
-**Branch:** phase-2-email-refactor
-
-Goal:  
-The importDataFromEmails function has a hard-coded array of Gmail labels and target sheet names. We will move this configuration into the Config sheet.  
-**Current Hard-Coded Logic (in importDataFromEmails):**
-
-var emailConfigs \= \[  
-      {  
-        label: 'dashboard-reports-earned-media-schdules',  
-        sheetName: 'IMPORT-FF Schedules',  
-        encoding: 'ISO-8859-1' // Original encoding  
-      },  
-      {  
-        label: 'dashboard-reports-earned-media---est-vs-actual ',  
-        sheetName: 'Est vs Act \- Import',  
-        encoding: 'ISO-8859-1' // Original encoding  
-      },  
-      {  
-        label: 'dashboard-reports-earned-media-timecards-with-projects', // Your new label  
-        sheetName: 'Actuals \- Import',                        // Your new target sheet  
-        encoding: 'ISO-8859-1' // Assuming UTF-8 for this new source, adjust if needed  
-      }  
-    \];
-
-Your Task:  
-Modify the importDataFromEmails function to build its configuration from the Config sheet.
-
-1. **Assume** the Config sheet has a table (e.g., starting at row 10\) with the following 4 columns:  
-   * Column A: Setting Type (e.g., "Email Import")  
-   * Column B: Label / Name (the Gmail label)  
-   * Column C: Target Sheet (the sheet name to import to)  
-   * Column D: Encoding (e.g., "ISO-8859-1" or "UTF-8")  
-2. **Inside importDataFromEmails**, remove the hard-coded emailConfigs array.  
-3. **Read the new table** from the Config sheet (e.g., A10:D).  
-4. **Dynamically build** the emailConfigs array by looping through the rows you read:  
-   * Filter for rows where Column A is exactly "Email Import".  
-   * For each of these rows, create an object:  
-     * label: value from Column B  
-     * sheetName: value from Column C  
-     * encoding: value from Column D (or 'UTF-8' if blank)  
-5. The rest of the function, which loops through this emailConfigs array, should remain the same.
-
-Please provide the *entire modified importDataFromEmails function* for my review.
-
-### **Phase 3: Create Central Config & Refactor All Functions**
-
-**(Wait for user approval of Phase 2 before proceeding)**
-
-**Branch:** phase-3-central-config
-
-Goal:  
-Many functions still use hard-coded sheet names (e.g., 'Consolidated-FF Schedules', 'Active staff') and values (e.g., the number 7 in transformData). We will create a central helper function to read all such settings from the Config sheet and refactor all functions to use it.  
-**Your Task:**
-
-1. **Create a new helper function** named getConfigSettings().  
-   * This function should read a key-value table from the Config sheet (e.g., in range A2:C).  
-   * **Assume** the Config sheet table has columns:  
-     * Column A: Setting Type (e.g., "Sheet Name", "Sheet Config")  
-     * Column B: Key (e.g., "Staff", "Consolidated Schedules", "Data Start Column")  
-     * Column C: Value (e.g., "Active staff", "Consolidated-FF Schedules", "8")  
-   * The function should process this table and return a single settings object. Example output:  
-     {  
-       "sheetNames": {  
-         "staff": "Active staff",  
-         "consolidatedSchedules": "Consolidated-FF Schedules",  
-         "finalSchedules": "Final \- Schedules",  
-         "availabilityMatrix": "Availability Matrix",  
-         "finalCapacity": "Final \- Capacity",  
-         "countryHours": "Country Hours"  
-       },  
-       "sheetConfig": {  
-         "dataStartColumn": 8   
-       }  
-     }
-
-2. **Refactor** the following functions to use this new getConfigSettings() function:  
-   * transformData  
-   * buildAvailabilityMatrix  
-   * buildFinalCapacity  
-   * refreshAll (and any other functions that call them)  
-3. **In each function:**  
-   * Call var config \= getConfigSettings(); at the beginning.  
-   * Replace all hard-coded sheet names with the config object:  
-     * ss.getSheetByName('Consolidated-FF Schedules') becomes ss.getSheetByName(config.sheetNames.consolidatedSchedules)  
-     * ss.getSheetByName('Active staff') becomes ss.getSheetByName(config.sheetNames.staff)  
-     * ...and so on for all sheet names.  
-   * Replace the hard-coded 7 in transformData with the config value:  
-     * for (var j \= 7; ...) becomes for (var j \= config.sheetConfig.dataStartColumn \- 1; ...)  
-     * var nr \= row.slice(0, 7); becomes var nr \= row.slice(0, config.sheetConfig.dataStartColumn \- 1);
-
-Please provide the **new getConfigSettings() function** AND the **fully refactored transformData, buildAvailabilityMatrix, buildFinalCapacity, and refreshAll functions** for my review.
-
-### **Phase 4: Dynamically Scaffold Region Config**
+### **Phase 4: Refactor transformData**
 
 **(Wait for user approval of Phase 3 before proceeding)**
 
-**Branch:** phase-4-region-config
+**Branch:** phase-4-transform-refactor
 
 Goal:  
-The setupRegionConfigSheets function creates template sheets for regions and holidays, but its examples are hard-coded. We need to read the list of in-scope regions from Config sheet cell C6 and use that to build the examples.  
-Config Sheet, Cell C6 Value:  
-Denmark|France|Germany|South Africa|Spain|United Kingdom|Italy|Netherlands|United Arab Emirates|Australia|Israel|India|Mexico|United States  
-**Current Hard-Coded Logic (in setupRegionConfigSheets):**
+The transformData function \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 125\] has hard-coded sheet names and column numbers. We will move these to the Config sheet.  
+**Current Hard-Coded Logic:**
 
-var regionExamples \= \[  
-    \['UK', 'UK', 1, 5, 7.5\],  
-    \['EU-Central', 'DE,FR,NL', 1, 5, 8\],  
-    \['GCC', 'AE,SA', 7, 4, 8\]  
-  \];  
-// ...  
-var holidayExamples \= \[  
-    \['UK', new Date('2025-01-01'), 'New Year\\'s Day'\],  
-    \['DE', new Date('2025-10-03'), 'German Unity Day'\],  
-    \['AE', new Date('2025-03-31'), 'Eid al-Fitr (placeholder)'\]  
-  \];
+* ss.getSheetByName('Consolidated-FF Schedules') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 126\]  
+* ss.getSheetByName('Final \- Schedules') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 171\]  
+* for (var j \= 7; ...) \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 134\] (meaning data starts in column 8\)  
+* var nr \= row.slice(0, 7); \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 137\] (meaning 7 metadata columns)
 
-Your Task:  
-Modify the setupRegionConfigSheets function to dynamically build the regionExamples and holidayExamples arrays.
+**Your Task:**
 
-1. **Inside setupRegionConfigSheets**, read the value from Config sheet, cell C6.  
-2. **Parse this value:** It's a string with countries separated by |. Split it into an array of country names (e.g., \['Denmark', 'France', 'Germany', ...\]).  
-3. **Clear** the hard-coded regionExamples and holidayExamples arrays.  
-4. **Dynamically populate** these arrays by looping through your new country array:  
-   * For **regionExamples**:  
-     * For each country, get its 2-letter code using the existing normalizeCountryCode\_ function (e.g., normalizeCountryCode\_('Denmark') \-\> DK).  
-     * Create a row using the country code as both the "Region Code" and "Country Code". Use 1, 5, and 8 as placeholders for Start Day, End Day, and Hours.  
-     * *Example row for "Denmark":* \['DK', 'DK', 1, 5, 8\]  
-   * For **holidayExamples**:  
-     * For each country, get its 2-letter code.  
-     * Create a placeholder holiday row.  
-     * *Example row for "Denmark":* \['DK', new Date('2025-01-01'), 'New Year\\'s Day (placeholder)'\]
+1. **Assume** we add the following rows to our Config sheet (in the key-value table, e.g., A2:C):
 
-Please provide the *entire modified setupRegionConfigSheets function* for my review.
+| Setting Type | Key | Value |
+| :---- | :---- | :---- |
+| Sheet Name | Consolidated Schedules | Consolidated-FF Schedules |
+| Sheet Name | Final Schedules | Final \- Schedules |
+| Sheet Config | Data Start Column | 8 |
+
+2. **Modify transformData** to read these settings from the Config sheet.  
+   * Read the Config sheet to find and store these 3 values.  
+   * Replace the hard-coded sheet names with the values from the Config sheet.  
+   * Store the Data Start Column value as a variable (e.g., dataStartCol \= 8).  
+   * **Crucially**, update the hard-coded 7 to be dataStartCol \- 1\.  
+     * for (var j \= 7; ...) becomes for (var j \= dataStartCol \- 1; ...)  
+     * row.slice(0, 7\) becomes row.slice(0, dataStartCol \- 1\)  
+     * headers.slice(0, 7\) becomes headers.slice(0, dataStartCol \- 1\)
+
+Please provide the *entire modified transformData function* for my review.
+
+### **Phase 5: Refactor buildAvailabilityMatrix**
+
+**(Wait for user approval of Phase 4 before proceeding)**
+
+**Branch:** phase-5-availability-refactor
+
+Goal:  
+The buildAvailabilityMatrix function \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 190\] also has hard-coded sheet names. We will move these to the Config sheet.  
+**Current Hard-Coded Logic:**
+
+* ss.getSheetByName('Active staff') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 191\]  
+* ss.getSheetByName('Country Hours') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 192\]  
+* ss.getSheetByName('Availability Matrix') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 208\]
+
+**Your Task:**
+
+1. **Assume** we add the following rows to our Config sheet:
+
+| Setting Type | Key | Value |
+| :---- | :---- | :---- |
+| Sheet Name | Staff | Active staff |
+| Sheet Name | Country Hours | Country Hours |
+| Sheet Name | Availability Matrix | Availability Matrix |
+
+2. **Modify buildAvailabilityMatrix** to read these settings from the Config sheet.  
+   * Read the Config sheet to find and store these 3 values.  
+   * Replace all three hard-coded getSheetByName calls with the variables.
+
+Please provide the *entire modified buildAvailabilityMatrix function* for my review.
+
+### **Phase 6: Refactor buildFinalCapacity (Again)**
+
+**(Wait for user approval of Phase 5 before proceeding)**
+
+**Branch:** phase-6-capacity-refactor
+
+Goal:  
+The buildFinalCapacity function \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 230\], which we already modified for billable rates, also has hard-coded sheet names and a hard-coded project name for "Leave". We must abstract these.  
+**Current Hard-Coded Logic:**
+
+* ss.getSheetByName('Availability Matrix') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 231\]  
+* ss.getSheetByName('Final \- Schedules') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 232\]  
+* ss.getSheetByName('Active staff') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 233\]  
+* ss.getSheetByName('Final \- Capacity') \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 265\]  
+* if(pj==='JFGP All Leave') ... \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 259\]
+
+**Your Task:**
+
+1. **Assume** we add the following rows to our Config sheet:
+
+| Setting Type | Key | Value |
+| :---- | :---- | :---- |
+| Sheet Name | Final Capacity | Final \- Capacity |
+| Project Name | Leave Project | JFGP All Leave |
+
+2. **Modify buildFinalCapacity** to read these new settings, *in addition* to the settings it already uses (from Phase 3 & 5).  
+   * Read the Config sheet to find and store all necessary values.  
+   * Replace the four hard-coded sheet names with variables.  
+   * Replace the hard-coded string for the leave project:  
+     * if(pj==='JFGP All Leave') becomes if(pj \=== leaveProjectName)
+
+Please provide the *entire modified buildFinalCapacity function* for my review.
+
+### **Phase 7: Optimize with a Global Config Object**
+
+**(Wait for user approval of Phase 6 before proceeding)**
+
+**Branch:** phase-7-config-helper
+
+Goal:  
+In Phases 3-6, we have made our functions read from the Config sheet many times. This is repetitive and slow. We will create one helper function to read the config once and pass it to the other functions.  
+**Your Task:**
+
+1. **Create a new helper function** getGlobalConfig().  
+   * This function should:  
+     * Get the active spreadsheet and the Config sheet.  
+     * Read the *entire* key-value table (e.g., A2:C on the Config sheet).  
+     * Read the Role Config sheet and build the billableMap.  
+   * It should return a single, comprehensive config object, like this:  
+     {  
+       "sheetNames": {  
+         "staff": "Active staff",  
+         "countryHours": "Country Hours",  
+         "availabilityMatrix": "Availability Matrix",  
+         "consolidatedSchedules": "Consolidated-FF Schedules",  
+         "finalSchedules": "Final \- Schedules",  
+         "finalCapacity": "Final \- Capacity"   
+       },  
+       "sheetConfig": {  
+         "dataStartColumn": 8  
+       },  
+       "projectNames": {  
+         "leaveProject": "JFGP All Leave"  
+       },  
+       "billableMap": {  
+         "vp \+": 0.5,  
+         "director": 0.7,  
+         // ... etc.  
+         "(default)": 1.0  
+       }  
+     }
+
+2. **Modify refreshAll** \[source: chrissuarez/resource-management-app-script/Resource-Management-App-Script-phase-2-email-refactor/code.gs, line 282\]:  
+   * Have it call var config \= getGlobalConfig(); *one time* at the beginning.  
+   * Pass this config object as a parameter to the functions that need it:  
+     * transformData(config)  
+     * buildAvailabilityMatrix(config)  
+     * buildFinalCapacity(config)  
+3. **Modify transformData, buildAvailabilityMatrix, and buildFinalCapacity:**  
+   * Change their signatures to accept the config object (e.g., function transformData(config)).  
+   * **Remove all code** from inside these functions that reads from the Config or Role Config sheets.  
+   * Use the config object passed into them directly (e.g., ss.getSheetByName(config.sheetNames.staff), var bill \= config.billableMap\[resourceRole\] || config.billableMap\['(default)'\];).
+
+This will make the script much faster and cleaner.
+
+Please provide the **new getGlobalConfig() function** and the **modified refreshAll, transformData, buildAvailabilityMatrix, and buildFinalCapacity functions**.
