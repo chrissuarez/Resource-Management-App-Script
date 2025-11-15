@@ -351,7 +351,12 @@ function buildFinalCapacity(config) {
 function importAndFilterActiveStaff(config) {
   var sourceUrl = config.activeStaffUrl;
   if (!sourceUrl) throw new Error('Active Staff URL missing from Config sheet');
-  var source = openSpreadsheetByUrlOrId_(sourceUrl);
+  var source;
+  try {
+    source = openSpreadsheetByUrlOrId_(sourceUrl);
+  } catch (err) {
+    throw new Error('Failed to load Active Staff source from Config ("Active Staff URL"). ' + err.message);
+  }
   var sheet = source.getSheets()[0];
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) throw new Error('Active staff source has no data');
@@ -903,15 +908,25 @@ function openSpreadsheetByUrlOrId_(input) {
   var trimmed = (input + '').trim();
   if (!trimmed) throw new Error('Spreadsheet reference is empty');
   var attempts = [];
-  var matches = trimmed.match(/[-\w]{25,}/g);
+  var idCandidates = [];
+  var pathMatch = trimmed.match(/\/d\/([-\w]+)/i);
+  if (pathMatch && pathMatch[1]) {
+    idCandidates.push(pathMatch[1]);
+  }
+  var matches = trimmed.match(/[-\w]{20,}/g);
   if (matches && matches.length) {
-    for (var i = 0; i < matches.length; i++) {
-      var candidate = matches[i];
-      try {
-        return SpreadsheetApp.openById(candidate);
-      } catch (err) {
-        attempts.push('openById(' + candidate + '): ' + err);
+    matches.forEach(function(token) {
+      if (idCandidates.indexOf(token) === -1) {
+        idCandidates.push(token);
       }
+    });
+  }
+  for (var i = 0; i < idCandidates.length; i++) {
+    var candidate = idCandidates[i];
+    try {
+      return SpreadsheetApp.openById(candidate);
+    } catch (err) {
+      attempts.push('openById(' + candidate + '): ' + err);
     }
   }
   if (/^https?:\/\//i.test(trimmed)) {
