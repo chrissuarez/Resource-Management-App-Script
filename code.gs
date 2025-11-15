@@ -373,6 +373,105 @@ function importAndFilterActiveStaff(config) {
   destSheet.getRange(1, 1, filtered.length, filtered[0].length).setValues(filtered);
 }
 
+/**
+ * Aggregates Est vs Act data by Resource, Project, Month.
+ */
+function buildEstVsActAggregate(config) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var importSheet = ss.getSheetByName(config.importEstVsAct || 'Est vs Act - Import');
+  if (!importSheet) throw new Error('Est vs Act import sheet not found');
+  var destName = config.finalEstVsAct || 'Est vs Act - Aggregated';
+  var destSheet = ss.getSheetByName(destName) || ss.insertSheet(destName);
+  var data = importSheet.getDataRange().getValues();
+  var headers = data.length ? data[0] : [];
+  var rows = data.length > 1 ? data.slice(1) : [];
+  var timezone = ss.getSpreadsheetTimeZone();
+
+  function findIndex(patterns) {
+    if (!headers || !headers.length) return -1;
+    return headers.findIndex(function(h) {
+      return patterns.some(function(p) {
+        return new RegExp(p, 'i').test(h);
+      });
+    });
+  }
+
+  var idxResource = findIndex(['Resource Name', 'ResourceName']);
+  var idxProject = findIndex(['Project']);
+  var idxDate = findIndex(['Month', 'Month-Year', 'Month Year', 'Date', 'Week']);
+  var idxEst = findIndex(['Estimated Hours', 'Estimate', 'Est Hours', 'Est. Hours']);
+  var idxActual = findIndex(['Actual Hours', 'Actuals', 'Act Hours', 'Actual']);
+  var idxSingleHours = -1, idxType = -1;
+  if (idxEst === -1 && idxActual === -1) {
+    idxSingleHours = findIndex(['Hours', 'Value']);
+    idxType = findIndex(['Type', 'Category', 'Hours Type']);
+  }
+
+  if (idxResource === -1 || idxProject === -1 || idxDate === -1 || (idxEst === -1 && idxActual === -1 && idxSingleHours === -1)) {
+    throw new Error('Est vs Act import sheet is missing required columns');
+  }
+
+  var aggregate = {};
+  function addHours(key, estVal, actVal) {
+    if (estVal === null && actVal === null) return;
+    if (!aggregate[key]) aggregate[key] = { est: 0, act: 0 };
+    if (estVal !== null) aggregate[key].est += estVal;
+    if (actVal !== null) aggregate[key].act += actVal;
+  }
+
+  function parseHours(value) {
+    var num = parseFloat(value);
+    return isNaN(num) ? null : num;
+  }
+
+  rows.forEach(function(row) {
+    var resource = idxResource > -1 ? (row[idxResource] + '').trim() : '';
+    var project = idxProject > -1 ? (row[idxProject] + '').trim() : '';
+    var dateValue = idxDate > -1 ? coerceToDate_(row[idxDate], timezone) : null;
+    if (!resource || !project || !dateValue) return;
+    var monthKey = Utilities.formatDate(new Date(dateValue.getFullYear(), dateValue.getMonth(), 1), timezone, 'yyyy-MM');
+    var key = [resource, project, monthKey].join('|');
+    var estVal = idxEst > -1 ? parseHours(row[idxEst]) : null;
+    var actVal = idxActual > -1 ? parseHours(row[idxActual]) : null;
+    if (idxSingleHours > -1) {
+      var singleVal = parseHours(row[idxSingleHours]);
+      if (singleVal !== null) {
+        var typeVal = idxType > -1 ? (row[idxType] + '').toLowerCase() : '';
+        if (/est/.test(typeVal)) {
+          estVal = (estVal || 0) + singleVal;
+        } else if (/act/.test(typeVal)) {
+          actVal = (actVal || 0) + singleVal;
+        } else {
+          actVal = (actVal || 0) + singleVal;
+        }
+      }
+    }
+    addHours(key, estVal, actVal);
+  });
+
+  var output = [];
+  Object.keys(aggregate).sort(function(a, b) {
+    var pa = a.split('|'), pb = b.split('|');
+    if (pa[0] !== pb[0]) return pa[0].localeCompare(pb[0]);
+    if (pa[1] !== pb[1]) return pa[1].localeCompare(pb[1]);
+    return pa[2].localeCompare(pb[2]);
+  }).forEach(function(key) {
+    var parts = key.split('|');
+    var monthDate = monthKeyToDate_(parts[2]) || new Date(parts[2] + '-01');
+    var est = aggregate[key].est || 0;
+    var act = aggregate[key].act || 0;
+    output.push([parts[0], parts[1], monthDate, est, act, act - est]);
+  });
+
+  destSheet.clearContents();
+  var header = ['Resource Name', 'Project', 'Month', 'Estimated Hours', 'Actual Hours', 'Variance'];
+  destSheet.getRange(1, 1, 1, header.length).setValues([header]);
+  if (output.length) {
+    destSheet.getRange(2, 1, output.length, output[0].length).setValues(output);
+    destSheet.getRange(2, 3, output.length, 1).setNumberFormat('mmm-yy');
+  }
+}
+
 /** Country mapping **/
 var COUNTRY_MAP = {
   'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
@@ -802,9 +901,31 @@ function onOpen() {
 function openSpreadsheetByUrlOrId_(input) {
   if (!input) throw new Error('Spreadsheet reference is empty');
   var trimmed = (input + '').trim();
-  var idMatch = trimmed.match(/[-\w]{25,}/);
-  if (idMatch) {
-    return SpreadsheetApp.openById(idMatch[0]);
+  if (!trimmed) throw new Error('Spreadsheet reference is empty');
+  var attempts = [];
+  var matches = trimmed.match(/[-\w]{25,}/g);
+  if (matches && matches.length) {
+    for (var i = 0; i < matches.length; i++) {
+      var candidate = matches[i];
+      try {
+        return SpreadsheetApp.openById(candidate);
+      } catch (err) {
+        attempts.push('openById(' + candidate + '): ' + err);
+      }
+    }
   }
-  return SpreadsheetApp.openByUrl(trimmed);
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      return SpreadsheetApp.openByUrl(trimmed);
+    } catch (err2) {
+      attempts.push('openByUrl: ' + err2);
+    }
+  }
+  var message = 'Unable to open spreadsheet from reference "' + trimmed + '".';
+  if (attempts.length) {
+    message += ' Attempts: ' + attempts.join(' | ');
+  } else {
+    message += ' Provide a full Google Sheets URL or ID.';
+  }
+  throw new Error(message);
 }
