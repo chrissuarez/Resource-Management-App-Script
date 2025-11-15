@@ -495,6 +495,73 @@ function ensureRoleConfigSheet_(ss) {
   return sheet;
 }
 
+function setupConfigTab() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
+  var lastRow = Math.max(sheet.getLastRow(), 1);
+  var existingValues = sheet.getRange(1, 2, lastRow, 1).getDisplayValues();
+  var existingKeys = {};
+  existingValues.forEach(function(row){
+    var key = (row[0] + '').trim();
+    if (key) existingKeys[key] = true;
+  });
+
+  var requiredEntries = [
+    { key: 'IMPORT-FF Schedules', sample: 'IMPORT-FF Schedules' },
+    { key: 'Est vs Act - Import', sample: 'Est vs Act - Import' },
+    { key: 'Actuals - Import', sample: 'Actuals - Import' },
+    { key: 'Active Staff URL', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE/edit' },
+    { key: 'Active Staff Sheet', sample: 'Active staff' },
+    { key: 'FF Schedule Override Sheet', sample: 'FF Schedule Override' },
+    { key: 'Country Hours Sheet', sample: 'Country Hours' },
+    { key: 'Availability Matrix Sheet', sample: 'Availability Matrix' },
+    { key: 'Consolidated Schedules Sheet', sample: 'Consolidated-FF Schedules' },
+    { key: 'Final - Schedules Sheet', sample: 'Final - Schedules' },
+    { key: 'Final - Capacity Sheet', sample: 'Final - Capacity' },
+    { key: 'Est vs Act - Aggregated Sheet', sample: 'Est vs Act - Aggregated' },
+    { key: 'Role Config Sheet', sample: 'Role Config' },
+    { key: 'Leave Project Name', sample: 'JFGP All Leave' },
+    { key: 'Data Start Column', sample: '8' },
+    { key: 'Global Holidays', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE_HOLIDAYS/edit' }
+  ];
+
+  requiredEntries.forEach(function(entry){
+    if (!existingKeys[entry.key]) {
+      sheet.appendRow(['', entry.key, entry.sample]);
+      existingKeys[entry.key] = true;
+    }
+  });
+}
+
+function setupRoleConfigTab() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var config = getGlobalConfig();
+  var sheetName = config.roleConfigSheet || 'Role Config';
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
+
+  var dataRange = sheet.getDataRange();
+  var hasData = dataRange.getNumRows() > 1 && dataRange.getValues().slice(1).some(function(row){
+    return row.some(function(cell){return cell !== '' && cell !== null;});
+  });
+  if (hasData) return;
+
+  sheet.clear();
+  var headers = ['Role','Billable %'];
+  var defaults = [
+    ['(default)','100%'],
+    ['VP','50%'],
+    ['Director','70%'],
+    ['Executive','80%'],
+    ['Manager','80%']
+  ];
+  sheet.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.getRange(2,1,defaults.length,headers.length).setValues(defaults);
+  sheet.autoResizeColumns(1, headers.length);
+}
+
 function refreshCountryHoursFromRegion_(ss, config) {
   try {
     var regionId = config.regionCalendarId;
