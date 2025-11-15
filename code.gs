@@ -403,6 +403,60 @@ function ensureSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
+/**
+ * Reads configuration values from the Config sheet and returns a settings object.
+ */
+function getGlobalConfig() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+  if (!configSheet) {
+    throw new Error("Configuration sheet named 'Config' was not found.");
+  }
+
+  var lastRow = configSheet.getLastRow() || 1;
+  var configData = configSheet.getRange(1, 2, lastRow, 2).getDisplayValues(); // Columns B:C
+  function findValue(keyToFind) {
+    keyToFind = (keyToFind || '').trim();
+    if (!keyToFind) return '';
+    for (var i = 0; i < configData.length; i++) {
+      var row = configData[i];
+      if ((row[0] + '').trim() === keyToFind) {
+        var value = row[1];
+        return value !== null && typeof value !== 'undefined' ? (value + '').trim() : '';
+      }
+    }
+    return '';
+  }
+
+  var regionsRow = configSheet.getRange('D6:Z6').getDisplayValues()[0] || [];
+  var regionsList = regionsRow.map(function(cell){return (cell + '').trim();}).filter(function(cell){return cell;});
+
+  var rawCalendarLink = findValue('Global Holidays');
+  var calendarMatch = rawCalendarLink ? rawCalendarLink.match(/[-\w]{25,}/) : null;
+
+  var settings = {
+    importSchedules: findValue('IMPORT-FF Schedules') || 'IMPORT-FF Schedules',
+    importEstVsAct: findValue('Est vs Act - Import') || 'Est vs Act - Import',
+    importActuals: findValue('Actuals - Import') || 'Actuals - Import',
+    activeStaffUrl: findValue('Active Staff URL'),
+    staffSheet: findValue('Active Staff Sheet') || 'Active staff',
+    overrideSchedules: findValue('FF Schedule Override Sheet') || 'FF Schedule Override',
+    countryHours: findValue('Country Hours Sheet') || 'Country Hours',
+    availabilityMatrix: findValue('Availability Matrix Sheet') || 'Availability Matrix',
+    consolidatedSchedulesSheet: findValue('Consolidated Schedules Sheet') || 'Consolidated-FF Schedules',
+    finalSchedules: findValue('Final - Schedules Sheet') || 'Final - Schedules',
+    finalCapacity: findValue('Final - Capacity Sheet') || 'Final - Capacity',
+    finalEstVsAct: findValue('Est vs Act - Aggregated Sheet') || 'Est vs Act - Aggregated',
+    roleConfigSheet: findValue('Role Config Sheet') || 'Role Config',
+    leaveProjectName: findValue('Leave Project Name') || 'JFGP All Leave',
+    dataStartColumn: parseInt(findValue('Data Start Column') || '8', 10) || 8,
+    regionCalendarId: calendarMatch ? calendarMatch[0] : (rawCalendarLink || ''),
+    regionsInScope: regionsList
+  };
+
+  return settings;
+}
+
 function ensureRoleConfigSheet_(ss) {
   var sheet = ss.getSheetByName('Role Config');
   if (sheet) return sheet;
