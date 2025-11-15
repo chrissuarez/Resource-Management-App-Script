@@ -351,7 +351,7 @@ function buildFinalCapacity(config) {
 function importAndFilterActiveStaff(config) {
   var sourceUrl = config.activeStaffUrl;
   if (!sourceUrl) throw new Error('Active Staff URL missing from Config sheet');
-  var source = SpreadsheetApp.openByUrl(sourceUrl);
+  var source = openSpreadsheetByUrlOrId_(sourceUrl);
   var sheet = source.getSheets()[0];
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) throw new Error('Active staff source has no data');
@@ -797,4 +797,14 @@ function onOpen() {
     .addItem('Refresh All','refreshAll')
     .addItem('Run Setup','runSetup')
     .addToUi();
+}
+
+function openSpreadsheetByUrlOrId_(input) {
+  if (!input) throw new Error('Spreadsheet reference is empty');
+  var trimmed = (input + '').trim();
+  var idMatch = trimmed.match(/[-\w]{25,}/);
+  if (idMatch) {
+    return SpreadsheetApp.openById(idMatch[0]);
+  }
+  return SpreadsheetApp.openByUrl(trimmed);
 }
