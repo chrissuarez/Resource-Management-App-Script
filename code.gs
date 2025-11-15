@@ -104,82 +104,103 @@ function importDataFromEmails() {
 /**
  * Transforms the imported schedules and adds a Helper column.
  */
-function transformData(config) {
+function buildFinalSchedules(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sourceSheet = ss.getSheetByName(config.consolidatedSchedulesSheet || 'Consolidated-FF Schedules');
-  if (!sourceSheet) throw new Error('Source sheet not found');
+  var importSheet = ss.getSheetByName(config.importSchedules || 'IMPORT-FF Schedules');
+  if (!importSheet) throw new Error('Import schedules sheet not found');
+  var data = importSheet.getDataRange().getValues();
+  if (data.length < 2) throw new Error('Import schedules sheet has no data');
+  var headers = data[0];
+  var rows = data.slice(1);
+  var metadataColumns = Math.max(1, parseInt(config.dataStartColumn, 10) || 8) - 1;
+  var timezone = ss.getSpreadsheetTimeZone();
 
-  // Read headers and data
-  var lastCol = sourceSheet.getLastColumn();
-  var lastRow = sourceSheet.getLastRow();
-  var headers = sourceSheet.getRange(2, 1, 1, lastCol).getValues()[0];
-  var data    = sourceSheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
-  var outRows = [];
-  var dataStartCol = Math.max(1, parseInt(config.dataStartColumn, 10) || 8);
-  var metadataColumns = dataStartCol - 1;
+  function findIndex(pats) {
+    return headers.findIndex(function(h){
+      return pats.some(function(p){return new RegExp(p,'i').test(h);});
+    });
+  }
+  var resourceIdx = findIndex(['Resource Name','ResourceName']);
+  if (resourceIdx === -1) resourceIdx = metadataColumns - 1;
+  var projectIdx = findIndex(['Project']);
 
-  // Iterate each row & pivot month columns into rows
-  data.forEach(function(row) {
-    for (var j = metadataColumns; j < row.length; j++) {
-      if (row[j] !== '') {
-        var nr = row.slice(0, metadataColumns);
-        // Add Date & Value
-        var dateValue  = headers[j];
-        var hoursValue = row[j];
-        nr.push(dateValue, hoursValue);
+  var overrideSheet = ss.getSheetByName(config.overrideSchedules || 'FF Schedule Override');
+  var overrideMap = {};
+  if (overrideSheet && overrideSheet.getLastRow() > 1) {
+    var overrideData = overrideSheet.getDataRange().getValues();
+    var oHeaders = overrideData[0];
+    var oRows = overrideData.slice(1);
+    function findOverrideIndex(pats) {
+      return oHeaders.findIndex(function(h){
+        return pats.some(function(p){return new RegExp(p,'i').test(h);});
+      });
+    }
+    var oRes = findOverrideIndex(['Resource Name','Resource']);
+    var oProj = findOverrideIndex(['Project']);
+    var oDate = findOverrideIndex(['Date']);
+    var oVal  = findOverrideIndex(['Hours','Value']);
+    if (oRes > -1 && oDate > -1 && oVal > -1) {
+      oRows.forEach(function(row){
+        var res = (row[oRes] + '').trim();
+        if (!res) return;
+        var proj = oProj > -1 ? (row[oProj] + '').trim() : '';
+        var rawDate = row[oDate];
+        var dateObj = rawDate instanceof Date ? rawDate : new Date(rawDate);
+        if (isNaN(dateObj)) return;
+        var monthKey = Utilities.formatDate(new Date(dateObj.getFullYear(), dateObj.getMonth(), 1), timezone, 'yyyy-MM');
+        var key = [res, proj, monthKey].join('|');
+        overrideMap[key] = parseFloat(row[oVal]) || 0;
+      });
+    }
+  }
 
-        // Build Helper key: ResourceName-MM-yy
-        var resName = nr[6] + '';
-        var dt;
-
-        // Case 1: header is a Date object
-        if (dateValue instanceof Date) {
-          dt = dateValue;
-
-        // Case 2: header is text 'MMM-yy'
-        } else if (typeof dateValue === 'string' && /^[A-Za-z]{3}-\d{2}$/.test(dateValue)) {
-          var parts = dateValue.split('-');
-          var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          var mIndex = months.indexOf(parts[0]);
-          var yFull  = 2000 + parseInt(parts[1], 10);
-          dt = new Date(yFull, mIndex, 1);
-
-        // Case 3: header is text 'dd/MM/yyyy'
-        } else if (typeof dateValue === 'string') {
-          var m = dateValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          if (m) {
-            dt = new Date(parseInt(m[3],10), parseInt(m[2],10) - 1, parseInt(m[1],10));
-          } else {
-            dt = new Date(dateValue);
-          }
-
-        // Fallback
-        } else {
-          dt = new Date(dateValue);
-        }
-
-        var helperKey = resName + '-' +
-          Utilities.formatDate(dt, ss.getSpreadsheetTimeZone(), 'MM-yy');
-        nr.push(helperKey);
-
-        outRows.push(nr);
+  function parseHeaderDate(value) {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string') {
+      if (/^[A-Za-z]{3}-\d{2}$/.test(value)) {
+        var parts = value.split('-');
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var idx = months.indexOf(parts[0]);
+        if (idx > -1) return new Date(2000 + parseInt(parts[1], 10), idx, 1);
       }
+      var match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (match) {
+        return new Date(parseInt(match[3],10), parseInt(match[2],10) - 1, parseInt(match[1],10));
+      }
+      var parsed = new Date(value);
+      if (!isNaN(parsed)) return parsed;
+    }
+    return new Date(value);
+  }
+
+  var outRows = [];
+  rows.forEach(function(row){
+    for (var j = metadataColumns; j < row.length; j++) {
+      var hours = row[j];
+      if (hours === '' || hours === null || typeof hours === 'undefined') continue;
+      var base = row.slice(0, metadataColumns);
+      var dateValue = headers[j];
+      var dt = parseHeaderDate(dateValue);
+      if (isNaN(dt)) continue;
+      var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
+      var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
+      var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
+      var overrideKey = [resourceName, projectName, monthKey].join('|');
+      var finalHours = overrideMap.hasOwnProperty(overrideKey) ? overrideMap[overrideKey] : hours;
+
+      var helperKey = resourceName + '-' + Utilities.formatDate(dt, timezone, 'MM-yy');
+      var newRow = base.slice();
+      newRow.push(dt, finalHours, helperKey);
+      outRows.push(newRow);
     }
   });
 
-  // Write to 'Final - Schedules' sheet
-  var ts = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
-  if (ts.getLastRow() > 1) {
-    ts.getRange(2, 1, ts.getLastRow() - 1, ts.getLastColumn()).clearContent();
-  }
-
-  // Set headers including Helper
-  var newHdr = headers.slice(0, metadataColumns).concat(['Date', 'Value', 'Helper']);
-  ts.getRange(1, 1, 1, newHdr.length).setValues([newHdr]);
-
-  // Paste transformed rows
+  var finalSheet = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
+  finalSheet.clearContents();
+  var headerRow = headers.slice(0, metadataColumns).concat(['Date','Value','Helper']);
+  finalSheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
   if (outRows.length) {
-    ts.getRange(2, 1, outRows.length, outRows[0].length).setValues(outRows);
+    finalSheet.getRange(2, 1, outRows.length, outRows[0].length).setValues(outRows);
   }
 }
 
@@ -329,8 +350,10 @@ function buildFinalCapacity(config) {
 // ----- 4. Wrapper to run full refresh -----
 function refreshAll() {
   var config = getGlobalConfig();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
   importDataFromEmails(config);
-  transformData(config);
+  buildFinalSchedules(config);
+  refreshCountryHoursFromRegion_(ss, config);
   buildAvailabilityMatrix(config);
   buildFinalCapacity(config);
 }
