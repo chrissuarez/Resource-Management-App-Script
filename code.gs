@@ -7,27 +7,22 @@
 // ----- 0. Import schedules and actuals from email -----
 function importDataFromEmails() {
   try {
+    var config = getGlobalConfig();
     var ss = SpreadsheetApp.openById(getSpreadsheetIdFromConfig_());
-    var configSheet = ss.getSheetByName('Config');
     var emailConfigs = [];
+    var configSheet = ss.getSheetByName('Config');
     if (configSheet) {
       var startRow = 10;
-      var startCol = 2; // table starts at column B
       var lastRow = configSheet.getLastRow();
       if (lastRow >= startRow) {
-        var configData = configSheet.getRange(startRow, startCol, lastRow - startRow + 1, 4).getValues();
+        var configData = configSheet.getRange(startRow, 2, lastRow - startRow + 1, 4).getValues();
         configData.forEach(function(row) {
-          var type = (row[0] + '').trim();
-          if (type !== 'Email Import') return;
+          if ((row[0] + '').trim() !== 'Email Import') return;
           var label = (row[1] + '').trim();
           var sheetName = (row[2] + '').trim();
           if (!label || !sheetName) return;
           var encoding = (row[3] + '').trim() || 'UTF-8';
-          emailConfigs.push({
-            label: label,
-            sheetName: sheetName,
-            encoding: encoding
-          });
+          emailConfigs.push({ label: label, sheetName: sheetName, encoding: encoding });
         });
       }
     }
@@ -109,9 +104,9 @@ function importDataFromEmails() {
 /**
  * Transforms the imported schedules and adds a Helper column.
  */
-function transformData() {
+function transformData(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sourceSheet = ss.getSheetByName('Consolidated-FF Schedules');
+  var sourceSheet = ss.getSheetByName(config.consolidatedSchedulesSheet || 'Consolidated-FF Schedules');
   if (!sourceSheet) throw new Error('Source sheet not found');
 
   // Read headers and data
@@ -172,7 +167,7 @@ function transformData() {
   });
 
   // Write to 'Final - Schedules' sheet
-  var ts = ss.getSheetByName('Final - Schedules') || ss.insertSheet('Final - Schedules');
+  var ts = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
   if (ts.getLastRow() > 1) {
     ts.getRange(2, 1, ts.getLastRow() - 1, ts.getLastColumn()).clearContent();
   }
@@ -188,10 +183,10 @@ function transformData() {
 }
 
 // ----- 2. Build availability matrix -----
-function buildAvailabilityMatrix() {
+function buildAvailabilityMatrix(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var staffSheet = ss.getSheetByName('Active staff');
-  var hoursSheet = ss.getSheetByName('Country Hours');
+  var staffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
+  var hoursSheet = ss.getSheetByName(config.countryHours || 'Country Hours');
   if (!staffSheet || !hoursSheet) throw new Error('Missing staff or hours sheet');
 
   var sd = staffSheet.getDataRange().getValues(), hdr = sd[0], rows = sd.slice(1);
@@ -209,7 +204,7 @@ function buildAvailabilityMatrix() {
   });
   var months = Object.keys(hmap).map(k=>k.split('|')[1]).filter((v,i,a)=>a.indexOf(v)===i).sort();
 
-  var out = ss.getSheetByName('Availability Matrix')||ss.insertSheet('Availability Matrix');
+  var out = ss.getSheetByName(config.availabilityMatrix || 'Availability Matrix')||ss.insertSheet(config.availabilityMatrix || 'Availability Matrix');
   out.clearContents(); out.getRange(1,1).setValue('ResourceName');
   months.forEach(function(m,i){var d=new Date(m+'-01');out.getRange(1,i+2).setValue(d).setNumberFormat('MMM-yy');});
 
@@ -235,14 +230,14 @@ function buildAvailabilityMatrix() {
 }
 
 // ----- 3. Build final capacity table -----
-function buildFinalCapacity() {
+function buildFinalCapacity(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var avail = ss.getSheetByName('Availability Matrix');
-  var sched = ss.getSheetByName('Final - Schedules');
-  var staff = ss.getSheetByName('Active staff');
+  var avail = ss.getSheetByName(config.availabilityMatrix || 'Availability Matrix');
+  var sched = ss.getSheetByName(config.finalSchedules || 'Final - Schedules');
+  var staff = ss.getSheetByName(config.staffSheet || 'Active staff');
   if(!avail||!sched||!staff) throw new Error('Missing sheets');
 
-  var roleSheet = ensureRoleConfigSheet_(ss);
+  var roleSheet = ss.getSheetByName(config.roleConfigSheet || 'Role Config') || ensureRoleConfigSheet_(ss);
   function parseBillableValue_(value) {
     if (value === null || typeof value === 'undefined') return null;
     if (typeof value === 'number') {
@@ -308,11 +303,11 @@ function buildFinalCapacity() {
   var leave={}, schedM={};
   sr2.forEach(r=>{var pj=r[iProj]+'', h=r[iHelp]+''; var m=h.match(/^(.+)-(\d{2})-(\d{2})$/); if(!m)return;
     var nm=m[1], mo=m[2], yr=m[3]; var key=(yr.length===2?('20'+yr):yr)+'-'+mo; var hrs=parseFloat(r[iVal])||0;
-    if(pj==='JFGP All Leave') leave[nm+'|'+key]=(leave[nm+'|'+key]||0)+hrs;
+    if(pj===(config.leaveProjectName||'JFGP All Leave')) leave[nm+'|'+key]=(leave[nm+'|'+key]||0)+hrs;
     else schedM[nm+'|'+key]=(schedM[nm+'|'+key]||0)+hrs;
   });
 
-  var fo=ss.getSheetByName('Final - Capacity')||ss.insertSheet('Final - Capacity'); fo.clear();
+  var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity'); fo.clear();
   var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','Sched Hrs','Billable Capacity'];
   fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
   Object.keys(fullMap).forEach(function(k){
@@ -332,10 +327,11 @@ function buildFinalCapacity() {
 
 // ----- 4. Wrapper to run full refresh -----
 function refreshAll() {
-  importDataFromEmails();
-  transformData();
-  buildAvailabilityMatrix();
-  buildFinalCapacity();
+  var config = getGlobalConfig();
+  importDataFromEmails(config);
+  transformData(config);
+  buildAvailabilityMatrix(config);
+  buildFinalCapacity(config);
 }
 
 // ----- 5. Add custom menu -----
