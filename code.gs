@@ -348,24 +348,29 @@ function buildFinalCapacity(config) {
 }
 
 // ----- 4. Wrapper to run full refresh -----
-function refreshAll() {
-  var config = getGlobalConfig();
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  importDataFromEmails(config);
-  buildFinalSchedules(config);
-  refreshCountryHoursFromRegion_(ss, config);
-  buildAvailabilityMatrix(config);
-  buildFinalCapacity(config);
-}
-
-// ----- 5. Add custom menu -----
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Earned Media Resourcing')
-    .addItem('Import & Transform','refreshAll')
-    .addItem('Build Availability (after adjusting team/hours)','buildAvailabilityMatrix')
-    .addItem('Build Capacity (after adhoc schedule updates)','buildFinalCapacity')
-    .addToUi();
+function importAndFilterActiveStaff(config) {
+  var sourceUrl = config.activeStaffUrl;
+  if (!sourceUrl) throw new Error('Active Staff URL missing from Config sheet');
+  var source = SpreadsheetApp.openByUrl(sourceUrl);
+  var sheet = source.getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) throw new Error('Active staff source has no data');
+  var headers = data[0];
+  var rows = data.slice(1);
+  var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(config.staffSheet || 'Active staff');
+  if (!destSheet) throw new Error('Destination staff sheet not found');
+  var countryIdx = headers.findIndex(function(h){return /Resource Country/i.test(h);});
+  if (countryIdx === -1) throw new Error('Resource Country column missing');
+  var regionSet = new Set((config.regionsInScope || []).map(function(x){return (x + '').toLowerCase();}));
+  var filtered = [headers];
+  rows.forEach(function(row){
+    var country = (row[countryIdx] + '').toLowerCase();
+    if (!regionSet.size || regionSet.has(country)) {
+      filtered.push(row);
+    }
+  });
+  destSheet.clearContents();
+  destSheet.getRange(1, 1, filtered.length, filtered[0].length).setValues(filtered);
 }
 
 /** Country mapping **/
@@ -767,4 +772,29 @@ function monthKeyToDate_(key) {
   var month = parseInt(parts[1], 10) - 1;
   if (isNaN(year) || isNaN(month)) return null;
   return new Date(year, month, 1);
+}
+
+function refreshAll() {
+  var config = getGlobalConfig();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  importDataFromEmails(config);
+  importAndFilterActiveStaff(config);
+  buildEstVsActAggregate(config);
+  refreshCountryHoursFromRegion_(ss, config);
+  buildAvailabilityMatrix(config);
+  buildFinalSchedules(config);
+  buildFinalCapacity(config);
+}
+
+function runSetup() {
+  setupConfigTab();
+  setupRoleConfigTab();
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Earned Media Resourcing')
+    .addItem('Refresh All','refreshAll')
+    .addItem('Run Setup','runSetup')
+    .addToUi();
 }
