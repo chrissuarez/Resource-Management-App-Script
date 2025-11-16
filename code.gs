@@ -112,7 +112,8 @@ function buildFinalSchedules(config) {
   if (data.length < 2) throw new Error('Import schedules sheet has no data');
   var headers = data[0];
   var rows = data.slice(1);
-  var metadataColumns = Math.max(1, parseInt(config.dataStartColumn, 10) || 8) - 1;
+  var requestedMetadataCols = Math.max(1, parseInt(config.dataStartColumn, 10) || 8) - 1;
+  var metadataColumns = Math.min(headers.length - 1, requestedMetadataCols);
   var timezone = ss.getSpreadsheetTimeZone();
 
   function findIndex(pats) {
@@ -121,8 +122,9 @@ function buildFinalSchedules(config) {
     });
   }
   var resourceIdx = findIndex(['Resource Name','ResourceName']);
-  if (resourceIdx === -1) resourceIdx = metadataColumns - 1;
+  if (resourceIdx === -1) resourceIdx = Math.max(0, metadataColumns - 1);
   var projectIdx = findIndex(['Project']);
+  if (projectIdx === -1) throw new Error('Project column not found in ' + (config.importSchedules || 'IMPORT-FF Schedules'));
 
   var overrideSheet = ss.getSheetByName(config.overrideSchedules || 'FF Schedule Override');
   var overrideMap = {};
@@ -357,7 +359,16 @@ function importAndFilterActiveStaff(config) {
   } catch (err) {
     throw new Error('Failed to load Active Staff source from Config ("Active Staff URL"). ' + err.message);
   }
-  var sheet = source.getSheets()[0];
+  var sourceSheetName = (config.activeStaffSourceSheet || '').trim();
+  var sheet = sourceSheetName ? source.getSheetByName(sourceSheetName) : null;
+  if (!sheet) {
+    var sheets = source.getSheets();
+    if (sourceSheetName) {
+      throw new Error('Active Staff source sheet "' + sourceSheetName + '" was not found in the provided spreadsheet.');
+    }
+    if (!sheets.length) throw new Error('Active Staff source spreadsheet has no sheets.');
+    sheet = sheets[0];
+  }
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) throw new Error('Active staff source has no data');
   var headers = data[0];
@@ -568,6 +579,7 @@ function getGlobalConfig() {
     importEstVsAct: findValue('Est vs Act - Import') || 'Est vs Act - Import',
     importActuals: findValue('Actuals - Import') || 'Actuals - Import',
     activeStaffUrl: findValue('Active Staff URL'),
+    activeStaffSourceSheet: findValue('Active Staff Source Sheet'),
     staffSheet: findValue('Active Staff Sheet') || 'Active staff',
     overrideSchedules: findValue('FF Schedule Override Sheet') || 'FF Schedule Override',
     countryHours: findValue('Country Hours Sheet') || 'Country Hours',
@@ -620,6 +632,7 @@ function setupConfigTab() {
     { key: 'Est vs Act - Import', sample: 'Est vs Act - Import' },
     { key: 'Actuals - Import', sample: 'Actuals - Import' },
     { key: 'Active Staff URL', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE/edit' },
+    { key: 'Active Staff Source Sheet', sample: 'Staff Export' },
     { key: 'Active Staff Sheet', sample: 'Active staff' },
     { key: 'FF Schedule Override Sheet', sample: 'FF Schedule Override' },
     { key: 'Country Hours Sheet', sample: 'Country Hours' },
