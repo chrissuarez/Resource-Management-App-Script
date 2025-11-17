@@ -889,7 +889,10 @@ function buildVarianceTab(config) {
     return 'All Leave';
   }
 
-  var rows = Object.keys(agg).sort(function(a, b){
+  var rows = Object.keys(agg).filter(function(key){
+    var val = (agg[key].cols[4] || '').trim();
+    return !/^not in lookup$/i.test(val);
+  }).sort(function(a, b){
     return a.localeCompare(b);
   }).map(function(key){
     var entry = agg[key];
