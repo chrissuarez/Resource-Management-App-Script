@@ -115,16 +115,84 @@ function buildFinalSchedules(config) {
   var requestedMetadataCols = Math.max(1, parseInt(config.dataStartColumn, 10) || 8) - 1;
   var metadataColumns = Math.min(headers.length - 1, requestedMetadataCols);
   var timezone = ss.getSpreadsheetTimeZone();
+  // Auto-detect the first data column (date-like) if the configured start is beyond headers.
+  var dataStartIdx = metadataColumns;
+  for (var probe = 0; probe < headers.length; probe++) {
+    var idx = probe;
+    if (idx < requestedMetadataCols - 1) continue;
+    var maybeDate = coerceToDate_(headers[idx], timezone);
+    if (maybeDate) { dataStartIdx = idx; break; }
+  }
+  // If no date-like header found, keep the configured start.
 
+  function normalizeHeaderValue(h) {
+    return (h === null || typeof h === 'undefined') ? '' : (h + '').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+  }
+  var normalizedHeaders = headers.map(normalizeHeaderValue);
   function findIndex(pats) {
-    return headers.findIndex(function(h){
+    return normalizedHeaders.findIndex(function(h){
       return pats.some(function(p){return new RegExp(p,'i').test(h);});
     });
   }
-  var resourceIdx = findIndex(['Resource Name','ResourceName']);
+  var resourceIdx = findIndex(['Resource Name','ResourceName','Resource:\\s*Resource Name','^Resource$']);
   if (resourceIdx === -1) resourceIdx = Math.max(0, metadataColumns - 1);
   var projectIdx = findIndex(['Project']);
   if (projectIdx === -1) throw new Error('Project column not found in ' + (config.importSchedules || 'IMPORT-FF Schedules'));
+  var accountIdx = findIndex(['Account','Client']);
+  var hoursIdx = findIndex(['Estimated Hours','Est Hours','Hours','Value','Estimated-Hours']);
+  var dateIdx = findIndex(['End Date','Date','End-Date']);
+  // Heuristic fallback for the simple long-form 4-column layout.
+  if (hoursIdx === -1 && headers.length === 4) hoursIdx = 2;
+  if (dateIdx === -1 && headers.length === 4) dateIdx = 3;
+  var isLongForm = hoursIdx > -1 && dateIdx > -1 && rows.length;
+  var metaStop = Math.min(metadataColumns, headers.length);
+  if (isLongForm) {
+    var avoidHours = hoursIdx > -1 ? hoursIdx : metaStop;
+    var avoidDate = dateIdx > -1 ? dateIdx : metaStop;
+    metaStop = Math.min(metaStop, avoidHours, avoidDate);
+  }
+
+  var staffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
+  var staffMap = {};
+  if (staffSheet && staffSheet.getLastRow() > 1) {
+    var staffData = staffSheet.getDataRange().getValues();
+    var sh = staffData[0], sr = staffData.slice(1);
+    function sFind(pats){return sh.findIndex(function(h){return pats.some(function(p){return new RegExp(p,'i').test(h);});});}
+    var sName = sFind(['ResourceName','Resource Name']);
+    var sRole = sFind(['ResourceRole','Resource Role']);
+    var sCountry = sFind(['Resource Country','Resource Location','Location']);
+    var sHub = sFind(['Hub','Resource Hub']);
+    sr.forEach(function(r){
+      var name = sName > -1 ? (r[sName] + '').trim() : '';
+      if (!name) return;
+      var roleRaw = sRole > -1 ? (r[sRole] + '').trim() : '';
+      var parts = roleRaw.split('-');
+      var practice = parts[0] ? parts[0].trim() : '';
+      var roleRest = parts.length > 1 ? parts.slice(1).join('-').trim() : '';
+      staffMap[name] = {
+        role: roleRaw || roleRest,
+        practice: practice,
+        location: sCountry > -1 ? (r[sCountry] + '').trim() : '',
+        hub: sHub > -1 ? (r[sHub] + '').trim() : ''
+      };
+    });
+  }
+
+  // Build lookup maps for Account (by Project) and Hub (by Resource) from Lookups tab.
+  var lookupSheet = ss.getSheetByName('Lookups');
+  var accountLookup = {};
+  var hubLookup = {};
+  if (lookupSheet && lookupSheet.getLastRow() > 1) {
+    var lookupData = lookupSheet.getDataRange().getValues();
+    lookupData.slice(1).forEach(function(row){
+      var projectVal = (row[0] + '').trim(); // Col A: Project
+      var accountVal = (row[1] + '').trim(); // Col B: Account
+      var resVal = (row[6] + '').trim();     // Col G: Resource
+      var hubVal = (row[7] + '').trim();     // Col H: Hub
+      if (projectVal && accountVal) accountLookup[projectVal] = accountVal;
+      if (resVal && hubVal) hubLookup[resVal] = hubVal;
+    });
+  }
 
   var overrideSheet = ss.getSheetByName(config.overrideSchedules || 'FF Schedule Override');
   var overrideMap = {};
@@ -176,33 +244,68 @@ function buildFinalSchedules(config) {
   }
 
   var outRows = [];
-  rows.forEach(function(row){
-    for (var j = metadataColumns; j < row.length; j++) {
-      var hours = row[j];
-      if (hours === '' || hours === null || typeof hours === 'undefined') continue;
-      var base = row.slice(0, metadataColumns);
-      var dateValue = headers[j];
-      var dt = parseHeaderDate(dateValue);
-      if (isNaN(dt)) continue;
+  if (isLongForm) {
+    rows.forEach(function(row){
+      var hours = row[hoursIdx];
+      if (hours === '' || hours === null || typeof hours === 'undefined') return;
+      var dt = coerceToDate_(row[dateIdx], timezone);
+      if (!dt || isNaN(dt)) return;
       var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
       var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
+      if (!projectName) return; // skip rows with empty Project
       var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
       var overrideKey = [resourceName, projectName, monthKey].join('|');
       var finalHours = overrideMap.hasOwnProperty(overrideKey) ? overrideMap[overrideKey] : hours;
-
       var helperKey = resourceName + '-' + Utilities.formatDate(dt, timezone, 'MM-yy');
-      var newRow = base.slice();
-      newRow.push(dt, finalHours, helperKey);
+      var staff = staffMap[resourceName] || {};
+      var accountVal = accountLookup[projectName] || (accountIdx > -1 ? row[accountIdx] : '');
+      var hubVal = hubLookup[resourceName] || staff.hub || '';
+      var newRow = [];
+      if (Object.keys(staffMap).length) {
+        newRow.push(staff.role || '', staff.practice || '', staff.location || '', hubVal);
+      }
+      newRow.push(accountVal, projectName, resourceName, dt, finalHours, helperKey);
       outRows.push(newRow);
-    }
-  });
+    });
+  } else {
+    rows.forEach(function(row){
+      for (var j = dataStartIdx; j < row.length; j++) {
+        var hours = row[j];
+        if (hours === '' || hours === null || typeof hours === 'undefined') continue;
+        var dateValue = headers[j];
+        var dt = parseHeaderDate(dateValue);
+        if (isNaN(dt)) continue;
+        var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
+        var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
+        if (!projectName) continue; // skip rows with empty Project
+        var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
+        var overrideKey = [resourceName, projectName, monthKey].join('|');
+        var finalHours = overrideMap.hasOwnProperty(overrideKey) ? overrideMap[overrideKey] : hours;
+
+        var helperKey = resourceName + '-' + Utilities.formatDate(dt, timezone, 'MM-yy');
+        var staff = staffMap[resourceName] || {};
+        var accountVal = accountLookup[projectName] || (accountIdx > -1 ? row[accountIdx] : '');
+        var hubVal = hubLookup[resourceName] || staff.hub || '';
+        var newRow = [];
+        if (Object.keys(staffMap).length) {
+          newRow.push(staff.role || '', staff.practice || '', staff.location || '', hubVal);
+        }
+        newRow.push(accountVal, projectName, resourceName, dt, finalHours, helperKey);
+        outRows.push(newRow);
+      }
+    });
+  }
 
   var finalSheet = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
   finalSheet.clearContents();
-  var headerRow = headers.slice(0, metadataColumns).concat(['Date','Value','Helper']);
+  var staffHeaders = Object.keys(staffMap).length ? ['Resource Role','Practice','Resource Location','Resource Hub'] : [];
+  var accountHeader = accountIdx > -1 ? headers[accountIdx] : 'Account';
+  var headerRow = staffHeaders.concat([accountHeader, headers[projectIdx] || 'Project', headers[resourceIdx] || 'Resource Name','Date','Value','Helper']);
   finalSheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
   if (outRows.length) {
     finalSheet.getRange(2, 1, outRows.length, outRows[0].length).setValues(outRows);
+  } else {
+    Logger.log('buildFinalSchedules produced 0 rows. isLongForm=' + isLongForm + ', hoursIdx=' + hoursIdx + ', dateIdx=' + dateIdx + ', dataStartIdx=' + dataStartIdx + ', metadataColumns=' + metadataColumns + ', headers=' + headers.join(' | '));
   }
 }
 
@@ -375,16 +478,31 @@ function importAndFilterActiveStaff(config) {
   var rows = data.slice(1);
   var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(config.staffSheet || 'Active staff');
   if (!destSheet) throw new Error('Destination staff sheet not found');
+  var practiceIdx = headers.findIndex(function(h){return /^Parent Practice$/i.test(h);});
   var countryIdx = headers.findIndex(function(h){return /Resource Country/i.test(h);});
-  if (countryIdx === -1) throw new Error('Resource Country column missing');
-  var regionSet = new Set((config.regionsInScope || []).map(function(x){return (x + '').toLowerCase();}));
+  var titleIdx = headers.findIndex(function(h){return /Resource Title/i.test(h);});
+  if (practiceIdx === -1 || countryIdx === -1 || titleIdx === -1) {
+    throw new Error('Required columns missing in Active Staff source (need Parent Practice, Resource Country, Resource Title).');
+  }
+
+  // Match original QUERY: Col1 == Config!C4, Col6 matches Config!C6, NOT Col3 contains "Contractor"
+  var filterCfg = getStaffFilterConfig_();
+  var practiceFilter = (filterCfg.practice || '').toLowerCase();
+  var regionPattern = filterCfg.regionPattern ? new RegExp(filterCfg.regionPattern, 'i') : null;
+
   var filtered = [headers];
   rows.forEach(function(row){
-    var country = (row[countryIdx] + '').toLowerCase();
-    if (!regionSet.size || regionSet.has(country)) {
-      filtered.push(row);
-    }
+    var practice = (row[practiceIdx] + '').toLowerCase();
+    var country = (row[countryIdx] + '').trim();
+    var title = (row[titleIdx] + '').toLowerCase();
+
+    if (practiceFilter && practice !== practiceFilter) return;
+    if (regionPattern && !regionPattern.test(country)) return;
+    if (/contractor/i.test(title)) return;
+
+    filtered.push(row);
   });
+
   destSheet.clearContents();
   destSheet.getRange(1, 1, filtered.length, filtered[0].length).setValues(filtered);
 }
@@ -580,6 +698,8 @@ function getGlobalConfig() {
     importActuals: findValue('Actuals - Import') || 'Actuals - Import',
     activeStaffUrl: findValue('Active Staff URL'),
     activeStaffSourceSheet: findValue('Active Staff Source Sheet'),
+    activeStaffPracticeFilter: findValue('Active Staff Practice Filter'),
+    activeStaffCountryRegex: findValue('Active Staff Country Regex'),
     staffSheet: findValue('Active Staff Sheet') || 'Active staff',
     overrideSchedules: findValue('FF Schedule Override Sheet') || 'FF Schedule Override',
     countryHours: findValue('Country Hours Sheet') || 'Country Hours',
@@ -633,6 +753,8 @@ function setupConfigTab() {
     { key: 'Actuals - Import', sample: 'Actuals - Import' },
     { key: 'Active Staff URL', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE/edit' },
     { key: 'Active Staff Source Sheet', sample: 'Staff Export' },
+    { key: 'Active Staff Practice Filter', sample: 'Earned Media (H)' },
+    { key: 'Active Staff Country Regex', sample: 'UK|United Kingdom|United States|US' },
     { key: 'Active Staff Sheet', sample: 'Active staff' },
     { key: 'FF Schedule Override Sheet', sample: 'FF Schedule Override' },
     { key: 'Country Hours Sheet', sample: 'Country Hours' },
@@ -961,4 +1083,27 @@ function openSpreadsheetByUrlOrId_(input) {
     message += ' Provide a full Google Sheets URL or ID.';
   }
   throw new Error(message);
+}
+
+function getStaffFilterConfig_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+  var practice = '';
+  var regionPattern = '';
+  if (configSheet) {
+    try {
+      var cfg = getGlobalConfig();
+      practice = (cfg.activeStaffPracticeFilter || '').trim();
+      regionPattern = (cfg.activeStaffCountryRegex || '').trim();
+    } catch (err) {
+      // fall back to direct cell reads below
+    }
+    if (!practice) {
+      practice = (configSheet.getRange('C4').getDisplayValue() + '').trim();
+    }
+    if (!regionPattern) {
+      regionPattern = (configSheet.getRange('C6').getDisplayValue() + '').trim();
+    }
+  }
+  return { practice: practice, regionPattern: regionPattern };
 }
