@@ -386,10 +386,10 @@ function buildAvailabilityMatrix(config) {
 // ----- 3. Build final capacity table -----
 function buildFinalCapacity(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var avail = ss.getSheetByName(config.availabilityMatrix || 'Availability Matrix');
   var sched = ss.getSheetByName(config.finalSchedules || 'Final - Schedules');
   var staff = ss.getSheetByName(config.staffSheet || 'Active staff');
-  if(!avail||!sched||!staff) throw new Error('Missing sheets');
+  var chSheet = ss.getSheetByName(config.countryHours || 'Country Hours');
+  if(!sched||!staff||!chSheet) throw new Error('Missing capacity prerequisite sheets (Final - Schedules, Active staff, or Country Hours)');
 
   var roleSheet = ss.getSheetByName(config.roleConfigSheet || 'Role Config') || ensureRoleConfigSheet_(ss);
   function parseBillableValue_(value) {
@@ -448,13 +448,15 @@ function buildFinalCapacity(config) {
 
   var sd = staff.getDataRange().getValues(), sh=sd[0], sr=sd.slice(1);
   function fi(p){return sh.findIndex(h=>p.some(x=>new RegExp(x,'i').test(h)));}
-  var iRes = fi(['ResourceName']), iRR=fi(['ResourceRole']), iHub=fi(['Hub']), iC=fi(['Resource Country']);
+  var iRes = fi(['ResourceName']), iRR=fi(['ResourceRole']), iHub=fi(['Hub']), iC=fi(['Resource Country']), iStart=fi(['Start Date']), iFte=fi(['FTE']);
   var staffMap={};
   sr.forEach(function(r){
     var n=r[iRes]+''; if(!n) return;
     var pr=r[iRR]+''; var ps=pr.split('-');
     var countryOriginal=r[iC]+'';
     var countryCode=normalizeCountryCode_(countryOriginal);
+    var startDate = iStart > -1 && r[iStart] ? new Date(r[iStart]) : null;
+    var fte = iFte > -1 ? parseFloat(r[iFte]) || 0 : 0;
     var hubValue = iHub > -1 ? (r[iHub] + '').trim() : '';
     if (!hubValue && hubLookup[n]) hubValue = hubLookup[n];
     staffMap[n]={
@@ -463,16 +465,15 @@ function buildFinalCapacity(config) {
       role:ps[1]?ps.slice(1).join('-').trim():'',
       countryOriginal:countryOriginal,
       countryCode:countryCode,
-      country:formatCountryDisplay_(countryOriginal,countryCode)
+      country:formatCountryDisplay_(countryOriginal,countryCode),
+      startDate:startDate,
+      fte:fte
     };
   });
 
-  var ad=avail.getDataRange().getValues(), am=ad[0].slice(1).map(d=>Utilities.formatDate(new Date(d),ss.getSpreadsheetTimeZone(),'yyyy-MM'));
-  var fullMap={}; ad.slice(1).forEach(r=>{var n=r[0]+''; r.slice(1).forEach((v,i)=>{fullMap[n+'|'+am[i]]=parseFloat(v)||0;});});
-
   // Country Hours lookup by country code and month (yyyy-MM)
-  var chSheet = ss.getSheetByName(config.countryHours || 'Country Hours');
   var countryHoursMap = {};
+  var monthSet = {};
   if (chSheet && chSheet.getLastRow() > 1) {
     var chData = chSheet.getDataRange().getValues().slice(1);
     chData.forEach(function(r){
@@ -483,8 +484,52 @@ function buildFinalCapacity(config) {
       if (!cCode || !mDate) return;
       var mKey = Utilities.formatDate(new Date(mDate.getFullYear(), mDate.getMonth(), 1), ss.getSpreadsheetTimeZone(), 'yyyy-MM');
       countryHoursMap[cCode+'|'+mKey] = hrs;
+      monthSet[mKey] = true;
     });
   }
+
+  // Build availability per resource/month directly from Country Hours (prorated by FTE and start date)
+  function countWorkingDaysInclusive_(startDate, endDate) {
+    var count = 0;
+    var cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      var dow = cursor.getDay();
+      if (dow !== 0 && dow !== 6) count++;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return count;
+  }
+
+  function availableHoursForMonth_(staffEntry, monthKey) {
+    var base = countryHoursMap[(staffEntry.countryCode || '') + '|' + monthKey];
+    if (!base) return 0;
+    var fte = staffEntry.fte || 0;
+    if (!fte) return 0;
+    var monthStart = new Date(monthKey + '-01');
+    var monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    if (!staffEntry.startDate) {
+      return base * fte;
+    }
+    var start = staffEntry.startDate;
+    if (start > monthEnd) return 0;
+    var effectiveStart = start > monthStart ? start : monthStart;
+    var workingTotal = countWorkingDaysInclusive_(monthStart, monthEnd);
+    if (!workingTotal) return 0;
+    var workingRemaining = countWorkingDaysInclusive_(effectiveStart, monthEnd);
+    var factor = workingRemaining / workingTotal;
+    return base * fte * factor;
+  }
+
+  var fullMap = {};
+  Object.keys(staffMap).forEach(function(name){
+    var staffEntry = staffMap[name];
+    Object.keys(monthSet).forEach(function(monthKey){
+      var hours = availableHoursForMonth_(staffEntry, monthKey);
+      if (hours) {
+        fullMap[name + '|' + monthKey] = hours;
+      }
+    });
+  });
 
   var sd2=sched.getDataRange().getValues(), sh2=sd2[0], sr2=sd2.slice(1);
   var iProj=sh2.findIndex(h=>/Project/i.test(h)), iVal=sh2.findIndex(h=>/Value|Hours/i.test(h)), iHelp=sh2.findIndex(h=>/Helper/i.test(h));
@@ -493,6 +538,22 @@ function buildFinalCapacity(config) {
     var nm=m[1], mo=m[2], yr=m[3]; var key=(yr.length===2?('20'+yr):yr)+'-'+mo; var hrs=parseFloat(r[iVal])||0;
     if(pj===(config.leaveProjectName||'JFGP All Leave')) leave[nm+'|'+key]=(leave[nm+'|'+key]||0)+hrs;
     else schedM[nm+'|'+key]=(schedM[nm+'|'+key]||0)+hrs;
+  });
+
+  function ensureFullMapKey(resourceName, monthKey) {
+    if (!staffMap[resourceName]) return;
+    var composite = resourceName + '|' + monthKey;
+    if (fullMap.hasOwnProperty(composite)) return;
+    var hours = availableHoursForMonth_(staffMap[resourceName], monthKey);
+    fullMap[composite] = hours || 0;
+  }
+  Object.keys(leave).forEach(function(key){
+    var parts = key.split('|');
+    ensureFullMapKey(parts[0], parts[1]);
+  });
+  Object.keys(schedM).forEach(function(key){
+    var parts = key.split('|');
+    ensureFullMapKey(parts[0], parts[1]);
   });
 
   var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity'); fo.clear();
@@ -669,6 +730,68 @@ function buildEstVsActAggregate(config) {
   }
 }
 
+/**
+ * Rebuilds the Variance tab (replacing previous sheet queries) by grouping
+ * the "All Rows Needed Data Source" sheet with the same logic as:
+ * SELECT L, E, B, A, G, H, I, J, sum(C) WHERE F IS NOT NULL AND K <= 0 AND K > -4 GROUP BY L, E, B, A, G, H, I, J
+ */
+function buildVarianceTab(config) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sourceName = config.varianceSourceSheet || 'All Rows Needed Data Source';
+  var destName = config.varianceSheet || 'Variance';
+  var source = ss.getSheetByName(sourceName);
+  if (!source) throw new Error('Variance source sheet not found: ' + sourceName);
+  var data = source.getDataRange().getValues();
+  if (!data.length) return;
+  var headers = data[0];
+  if (headers.length < 12) {
+    throw new Error('Variance source sheet "' + sourceName + '" is missing expected columns (needs at least 12).');
+  }
+
+  var agg = {};
+  data.slice(1).forEach(function(row){
+    if (!row.length) return;
+    var fVal = row[5];
+    if (fVal === null || typeof fVal === 'undefined' || (fVal + '').trim() === '') return; // WHERE F is not null
+    var kVal = parseFloat(row[10]);
+    if (isNaN(kVal) || kVal > 0 || kVal <= -4) return; // K <= 0 AND K > -4
+    var cVal = parseFloat(row[2]);
+    if (isNaN(cVal)) cVal = 0;
+    var keyParts = [row[11], row[4], row[1], row[0], row[6], row[7], row[8], row[9]];
+    var key = keyParts.join('|');
+    if (!agg[key]) {
+      agg[key] = { cols: keyParts, sum: 0 };
+    }
+    agg[key].sum += cVal;
+  });
+
+  var outHeader = [
+    headers[11] || 'Year - Month',
+    headers[4] || 'Account',
+    headers[1] || 'Project',
+    headers[0] || 'Resource',
+    headers[6] || 'Capability Partner',
+    headers[7] || 'Parent Practice',
+    headers[8] || 'Practice',
+    headers[9] || 'ResourceRole',
+    'Act TC'
+  ];
+
+  var rows = Object.keys(agg).sort(function(a, b){
+    return a.localeCompare(b);
+  }).map(function(key){
+    var entry = agg[key];
+    return entry.cols.concat([entry.sum]);
+  });
+
+  var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
+  dest.clearContents();
+  dest.getRange(1, 1, 1, outHeader.length).setValues([outHeader]);
+  if (rows.length) {
+    dest.getRange(2, 1, rows.length, outHeader.length).setValues(rows);
+  }
+}
+
 /** Country mapping **/
 var COUNTRY_MAP = {
   'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
@@ -771,6 +894,8 @@ function getGlobalConfig() {
     finalSchedules: findValue('Final - Schedules Sheet') || 'Final - Schedules',
     finalCapacity: findValue('Final - Capacity Sheet') || 'Final - Capacity',
     finalEstVsAct: findValue('Est vs Act - Aggregated Sheet') || 'Est vs Act - Aggregated',
+    varianceSourceSheet: findValue('Variance Source Sheet') || 'All Rows Needed Data Source',
+    varianceSheet: findValue('Variance Sheet') || 'Variance',
     roleConfigSheet: findValue('Role Config Sheet') || 'Role Config',
     leaveProjectName: findValue('Leave Project Name') || 'JFGP All Leave',
     dataStartColumn: parseInt(findValue('Data Start Column') || '8', 10) || 8,
@@ -826,6 +951,8 @@ function setupConfigTab() {
     { key: 'Final - Schedules Sheet', sample: 'Final - Schedules' },
     { key: 'Final - Capacity Sheet', sample: 'Final - Capacity' },
     { key: 'Est vs Act - Aggregated Sheet', sample: 'Est vs Act - Aggregated' },
+    { key: 'Variance Source Sheet', sample: 'All Rows Needed Data Source' },
+    { key: 'Variance Sheet', sample: 'Variance' },
     { key: 'Role Config Sheet', sample: 'Role Config' },
     { key: 'Leave Project Name', sample: 'JFGP All Leave' },
     { key: 'Data Start Column', sample: '8' },
@@ -1074,9 +1201,9 @@ function refreshAll() {
   importAndFilterActiveStaff(config);
   buildEstVsActAggregate(config);
   refreshCountryHoursFromRegion_(ss, config);
-  buildAvailabilityMatrix(config);
   buildFinalSchedules(config);
   buildFinalCapacity(config);
+  buildVarianceTab(config);
 }
 
 function runSetup() {
