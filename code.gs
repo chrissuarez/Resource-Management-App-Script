@@ -1321,3 +1321,7 @@ function getStaffFilterConfig_() {
   }
   return { practice: practice, regionPattern: regionPattern };
 }
+
+function testVariance() {
+  buildVarianceTab(getGlobalConfig());
+}
