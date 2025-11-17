@@ -765,6 +765,24 @@ function buildVarianceTab(config) {
     agg[key].sum += cVal;
   });
 
+  // Lookup Estimated/Actual hours from Est vs Act aggregated sheet keyed by Month+Project+Resource.
+  var estActSheet = ss.getSheetByName(config.finalEstVsAct || 'Est vs Act - Aggregated');
+  var estActMap = {};
+  if (estActSheet && estActSheet.getLastRow() > 1) {
+    var eaData = estActSheet.getDataRange().getValues().slice(1);
+    eaData.forEach(function(r){
+      var res = (r[0] + '').trim();
+      var proj = (r[1] + '').trim();
+      var mVal = r[2];
+      if (!res || !proj || !mVal) return;
+      var monthDate = mVal instanceof Date ? mVal : coerceToDate_(mVal, ss.getSpreadsheetTimeZone());
+      if (!monthDate || isNaN(monthDate)) return;
+      var monthKeyPretty = Utilities.formatDate(monthDate, ss.getSpreadsheetTimeZone(), 'yyyy - MM');
+      var key = monthKeyPretty + proj + res;
+      estActMap[key] = { est: parseFloat(r[3]) || 0, act: parseFloat(r[4]) || 0 };
+    });
+  }
+
   var outHeader = [
     headers[11] || 'Year - Month',
     headers[4] || 'Account',
@@ -775,7 +793,9 @@ function buildVarianceTab(config) {
     headers[8] || 'Practice',
     headers[9] || 'ResourceRole',
     'Act TC',
-    'Billable'
+    'Billable',
+    'Sched.',
+    'Est Act Hrs'
   ];
 
   function deriveBillable_(projectName) {
@@ -792,7 +812,9 @@ function buildVarianceTab(config) {
   }).map(function(key){
     var entry = agg[key];
     var billable = deriveBillable_(entry.cols[2]); // Project is the 3rd element in cols
-    return entry.cols.concat([entry.sum, billable]);
+    var lookupKey = (entry.cols[0] || '') + (entry.cols[2] || '') + (entry.cols[3] || '');
+    var estAct = estActMap[lookupKey] || { est: 0, act: 0 };
+    return entry.cols.concat([entry.sum, billable, estAct.est, estAct.act]);
   });
 
   var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
