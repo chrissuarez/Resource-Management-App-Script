@@ -774,14 +774,25 @@ function buildVarianceTab(config) {
     headers[7] || 'Parent Practice',
     headers[8] || 'Practice',
     headers[9] || 'ResourceRole',
-    'Act TC'
+    'Act TC',
+    'Billable'
   ];
+
+  function deriveBillable_(projectName) {
+    var p = (projectName || '').toString();
+    if (!p) return '';
+    var lower = p.toLowerCase();
+    if (/opp|client admin/.test(lower)) return 'Growth';
+    if (/JFGP|JFTR/i.test(p)) return 'Internal';
+    return 'Billable';
+  }
 
   var rows = Object.keys(agg).sort(function(a, b){
     return a.localeCompare(b);
   }).map(function(key){
     var entry = agg[key];
-    return entry.cols.concat([entry.sum]);
+    var billable = deriveBillable_(entry.cols[2]); // Project is the 3rd element in cols
+    return entry.cols.concat([entry.sum, billable]);
   });
 
   var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
