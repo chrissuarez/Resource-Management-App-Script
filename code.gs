@@ -909,11 +909,16 @@ function runSetup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Earned Media Resourcing')
-    .addItem('Refresh All','refreshAll')
-    .addItem('Run Setup','runSetup')
-    .addToUi();
+  try {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu('Earned Media Resourcing')
+      .addItem('Refresh All','refreshAll')
+      .addItem('Run Setup','runSetup')
+      .addToUi();
+  } catch (err) {
+    // UI not available in this execution context (e.g., headless/Apps Script API).
+    Logger.log('onOpen skipped (no UI available): ' + err);
+  }
 }
 
 function openSpreadsheetByUrlOrId_(input) {
