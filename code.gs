@@ -783,6 +783,43 @@ function buildVarianceTab(config) {
     });
   }
 
+  // Staff lookups for Region/Country/Hub
+  var staffInfo = {};
+  var staffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
+  if (staffSheet && staffSheet.getLastRow() > 1) {
+    var sData = staffSheet.getDataRange().getValues();
+    var sHeaders = sData[0];
+    function sFind(pats){return sHeaders.findIndex(function(h){return pats.some(function(p){return new RegExp(p,'i').test(h);});});}
+    var iName = sFind(['ResourceName','Resource Name']);
+    var iRegion = sFind(['Region']);
+    var iCountry = sFind(['Resource Country','Country']);
+    var iHub = sFind(['Hub']);
+    sData.slice(1).forEach(function(r){
+      var name = iName > -1 ? (r[iName] + '').trim() : '';
+      if (!name) return;
+      staffInfo[name] = {
+        region: iRegion > -1 ? (r[iRegion] + '').trim() : '',
+        country: iCountry > -1 ? (r[iCountry] + '').trim() : '',
+        hub: iHub > -1 ? (r[iHub] + '').trim() : ''
+      };
+    });
+  }
+
+  // Hub overrides from Lookups (Resource -> Hub)
+  var hubLookup = {};
+  var lookupSheet = ss.getSheetByName('Lookups');
+  if (lookupSheet && lookupSheet.getLastRow() > 1) {
+    var lData = lookupSheet.getDataRange().getValues();
+    var lHead = lData[0];
+    var lResIdx = lHead.findIndex(function(h){return /Resource/i.test(h);});
+    var lHubIdx = lHead.findIndex(function(h){return /Hub/i.test(h);});
+    lData.slice(1).forEach(function(r){
+      var res = lResIdx > -1 ? (r[lResIdx] + '').trim() : '';
+      var hub = lHubIdx > -1 ? (r[lHubIdx] + '').trim() : '';
+      if (res && hub) hubLookup[res] = hub;
+    });
+  }
+
   var outHeader = [
     headers[11] || 'Year - Month',
     headers[4] || 'Account',
@@ -795,7 +832,12 @@ function buildVarianceTab(config) {
     'Act TC',
     'Billable',
     'Sched.',
-    'Est Act Hrs'
+    'Est Act Hrs',
+    'Act.',
+    'Var',
+    'Region',
+    'Country',
+    'Resource Hub'
   ];
 
   function deriveBillable_(projectName) {
@@ -814,7 +856,11 @@ function buildVarianceTab(config) {
     var billable = deriveBillable_(entry.cols[2]); // Project is the 3rd element in cols
     var lookupKey = (entry.cols[0] || '') + (entry.cols[2] || '') + (entry.cols[3] || '');
     var estAct = estActMap[lookupKey] || { est: 0, act: 0 };
-    return entry.cols.concat([entry.sum, billable, estAct.est, estAct.act]);
+    var actValue = estAct.act && estAct.act !== 0 ? estAct.act : entry.sum;
+    var variance = actValue - (estAct.est || 0);
+    var staff = staffInfo[entry.cols[3]] || {};
+    var hubVal = staff.hub || hubLookup[entry.cols[3]] || '';
+    return entry.cols.concat([entry.sum, billable, estAct.est, estAct.act, actValue, variance, staff.region || '', staff.country || '', hubVal]);
   });
 
   var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
