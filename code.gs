@@ -731,6 +731,146 @@ function buildEstVsActAggregate(config) {
 }
 
 /**
+ * Rebuilds the "All Rows Needed Data Source" tab (or configured Variance Source Sheet)
+ * without relying on Sheet QUERY, then reapplies the downstream array formulas in E:L.
+ * This keeps the existing header if present; otherwise a default 12-column header is used.
+ */
+function rebuildVarianceSourceSheet_(config) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var destName = config.varianceSourceSheet || 'All Rows Needed Data Source';
+  var destSheet = ss.getSheetByName(destName) || ss.insertSheet(destName);
+
+  var defaultHeader = [
+    'Resource',
+    'Project',
+    'Start Date',
+    'Date',
+    'Account',
+    'Date Adj',
+    'Capability Partner',
+    'Parent Practice',
+    'Practice',
+    'ResourceRole',
+    'Relative Month',
+    'Year - Month'
+  ];
+
+  var header = defaultHeader;
+  if (destSheet.getLastRow() >= 1 && destSheet.getLastColumn() >= 1) {
+    var existingHeader = destSheet.getRange(1, 1, 1, Math.max(destSheet.getLastColumn(), defaultHeader.length)).getValues()[0];
+    if (existingHeader.some(function(c) { return c !== null && c !== ''; })) {
+      header = existingHeader;
+    }
+  }
+
+  var estSheet = ss.getSheetByName(config.importEstVsAct || 'Est vs Act - Import');
+  var actSheet = ss.getSheetByName(config.importActuals || 'Actuals - Import');
+  var lookupsSheet = ss.getSheetByName('Lookups');
+  var activeStaffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
+  var timezone = ss.getSpreadsheetTimeZone();
+
+  // Build project->account map from Lookups col A/B
+  var accountMap = {};
+  if (lookupsSheet && lookupsSheet.getLastRow() > 1) {
+    var lData = lookupsSheet.getDataRange().getValues();
+    lData.slice(1).forEach(function(r) {
+      var proj = (r[0] + '').trim();
+      var acc = (r[1] + '').trim();
+      if (proj && acc) accountMap[proj] = acc;
+    });
+  }
+
+  // Build resource lookup maps from Active staff
+  var resourceMap = {};
+  if (activeStaffSheet && activeStaffSheet.getLastRow() > 1) {
+    var asData = activeStaffSheet.getDataRange().getValues();
+    // Mirror the original sheet formulas: key on column H, values from I, A, B, D respectively.
+    var IDX_NAME = 7;    // col H
+    var IDX_CAP = 8;     // col I
+    var IDX_PARENT = 0;  // col A
+    var IDX_PRACTICE = 1;// col B
+    var IDX_ROLE = 3;    // col D
+    asData.slice(1).forEach(function(r){
+      var resName = r.length > IDX_NAME ? (r[IDX_NAME] + '').trim() : '';
+      if (!resName) return;
+      var cap = r.length > IDX_CAP ? (r[IDX_CAP] + '').trim() : '';
+      var parent = r.length > IDX_PARENT ? (r[IDX_PARENT] + '').trim() : '';
+      var practice = r.length > IDX_PRACTICE ? (r[IDX_PRACTICE] + '').trim() : '';
+      var roleRaw = r.length > IDX_ROLE ? (r[IDX_ROLE] + '').trim() : '';
+      var role = roleRaw;
+      if (practice && roleRaw && roleRaw.toLowerCase().indexOf((practice + ' -').toLowerCase()) === 0) {
+        role = roleRaw.substring((practice + ' - ').length);
+      }
+      resourceMap[resName] = {
+        cap: cap || 'Not in lookup',
+        parent: parent || 'Not in lookup',
+        practice: practice || 'Not in lookup',
+        role: role || 'Not in lookup'
+      };
+    });
+  }
+
+  var combined = [];
+
+  if (estSheet && estSheet.getLastRow() > 1) {
+    var estValues = estSheet.getDataRange().getValues().slice(1); // skip header
+    estValues.forEach(function(r) {
+      var project = (r[0] + '').trim();  // Col A
+      var resource = (r[1] + '').trim(); // Col B
+      if (!project || !resource) return;
+      combined.push([resource, project, '', r[4]]); // Resource, Project, blank Start Date, Date (Col E)
+    });
+  }
+
+  if (actSheet && actSheet.getLastRow() > 1) {
+    var actValues = actSheet.getDataRange().getValues().slice(1); // skip header
+    actValues.forEach(function(r) {
+      var project = (r[1] + '').trim(); // Col B
+      if (!project) return;
+      combined.push([r[0], r[1], r[2], r[3]]); // Resource, Project, Start?, Date?
+    });
+  }
+
+  combined.sort(function(a, b) {
+    return (a[1] || '').localeCompare(b[1] || '');
+  });
+
+  destSheet.clearContents();
+  destSheet.getRange(1, 1, 1, header.length).setValues([header]);
+
+  if (combined.length) {
+    var configSheet = ss.getSheetByName('Config');
+    var anchorCell = configSheet ? configSheet.getRange('C7').getValue() : null;
+    var anchorDate = coerceToDate_(anchorCell, timezone);
+    var output = combined.map(function(row){
+      var res = row[0], proj = row[1], startDate = row[2], dateVal = row[3];
+      var acct = accountMap[proj] || '#N/A';
+      var dateAdj = dateVal ? coerceToDate_(dateVal, timezone) : null;
+      var resInfo = resourceMap[res] || { cap:'Not in lookup', parent:'Not in lookup', practice:'Not in lookup', role:'Not in lookup' };
+      var relMonth = (res && dateAdj && anchorDate) ? ((dateAdj.getFullYear() - anchorDate.getFullYear()) * 12 + (dateAdj.getMonth() - anchorDate.getMonth())) : '';
+      var yearMonth = dateAdj ? Utilities.formatDate(new Date(dateAdj.getFullYear(), dateAdj.getMonth() + 1, 0), timezone, 'yyyy - MM') : '';
+      return [
+        res,
+        proj,
+        startDate || '',
+        dateAdj || '',
+        acct,
+        dateAdj || '',
+        resInfo.cap,
+        resInfo.parent,
+        resInfo.practice,
+        resInfo.role,
+        relMonth,
+        yearMonth
+      ];
+    });
+    destSheet.getRange(2, 1, output.length, header.length).setValues(output);
+  }
+
+  destSheet.autoResizeColumns(1, Math.max(header.length, 12));
+}
+
+/**
  * Rebuilds the Variance tab (replacing previous sheet queries) by grouping
  * the "All Rows Needed Data Source" sheet with the same logic as:
  * SELECT L, E, B, A, G, H, I, J, sum(C) WHERE F IS NOT NULL AND K <= 0 AND K > -4 GROUP BY L, E, B, A, G, H, I, J
@@ -1328,6 +1468,7 @@ function refreshAll() {
   importDataFromEmails(config);
   importAndFilterActiveStaff(config);
   buildEstVsActAggregate(config);
+  rebuildVarianceSourceSheet_(config);
   refreshCountryHoursFromRegion_(ss, config);
   buildFinalSchedules(config);
   buildFinalCapacity(config);
