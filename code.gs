@@ -1060,6 +1060,47 @@ function buildVarianceTab(config) {
   }
 }
 
+/**
+ * Copies the Lookups data from the spreadsheet URL/ID specified in Config!C2
+ * (range "Import!A1:E") into the local Lookups sheet, replacing the IMPORTRANGE.
+ */
+function refreshLookupsFromConfig_(config) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sourceRef = config && config.lookupsImportUrl ? (config.lookupsImportUrl + '').trim() : '';
+  if (!sourceRef) {
+    Logger.log('Lookups import skipped: Config!C2 is empty.');
+    return false;
+  }
+  try {
+    var source = openSpreadsheetByUrlOrId_(sourceRef);
+    var sourceSheet = source.getSheetByName('Import');
+    if (!sourceSheet) {
+      Logger.log('Lookups import skipped: sheet "Import" not found in source.');
+      return false;
+    }
+    var values = sourceSheet.getDataRange().getValues();
+    if (!values || !values.length) {
+      Logger.log('Lookups import skipped: source has no data.');
+      return false;
+    }
+    var dest = ss.getSheetByName('Lookups') || ss.insertSheet('Lookups');
+    // Only refresh columns A:E so we don't overwrite locally maintained columns (e.g., G:J Hub overrides).
+    dest.getRange(1, 1, dest.getMaxRows(), 5).clearContent();
+    dest.getRange(1, 1, values.length, values[0].length).setValues(values);
+    // Reapply helper formulas in Accounts / Practices sections (L:N) without touching user-entered overrides.
+    dest.getRange('L1').setValue('Accounts');
+    dest.getRange('L2').setFormula('=SORT(UNIQUE(FILTER(B2:B, E2:E <> "Project Close Out")),1,1)');
+    dest.getRange('N1').setValue('Practices for Actuals Report');
+    dest.getRange('N2').setFormula('=JOIN(", ",N3:N20)');
+    dest.getRange('N3').setFormula('=UNIQUE(\'Final - Capacity\'!F3:F)');
+    dest.autoResizeColumns(1, Math.max(values[0].length, 14));
+    return true;
+  } catch (err) {
+    Logger.log('Lookups import failed: ' + err);
+    return false;
+  }
+}
+
 /** Country mapping **/
 var COUNTRY_MAP = {
   'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
@@ -1145,6 +1186,7 @@ function getGlobalConfig() {
 
   var rawCalendarLink = findValue('Global Holidays');
   var calendarMatch = rawCalendarLink ? rawCalendarLink.match(/[-\w]{25,}/) : null;
+  var lookupsImportUrl = (configSheet.getRange('C2').getDisplayValue() + '').trim();
 
   var settings = {
     importSchedules: findValue('IMPORT-FF Schedules') || 'IMPORT-FF Schedules',
@@ -1168,7 +1210,8 @@ function getGlobalConfig() {
     leaveProjectName: findValue('Leave Project Name') || 'JFGP All Leave',
     dataStartColumn: parseInt(findValue('Data Start Column') || '8', 10) || 8,
     regionCalendarId: calendarMatch ? calendarMatch[0] : (rawCalendarLink || ''),
-    regionsInScope: regionsList
+    regionsInScope: regionsList,
+    lookupsImportUrl: lookupsImportUrl
   };
 
   return settings;
@@ -1467,6 +1510,7 @@ function refreshAll() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   importDataFromEmails(config);
   importAndFilterActiveStaff(config);
+  refreshLookupsFromConfig_(config);
   buildEstVsActAggregate(config);
   rebuildVarianceSourceSheet_(config);
   refreshCountryHoursFromRegion_(ss, config);
