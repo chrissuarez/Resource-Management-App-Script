@@ -854,6 +854,12 @@ function buildVarianceTab(config) {
     return 'Billable';
   }
 
+  function adjustAccount_(projectName, accountVal) {
+    if (/^JFGP/i.test(projectName || '')) return 'Jellyfish Internal';
+    if (/^JFTR/i.test(projectName || '')) return 'Jellyfish Training';
+    return accountVal;
+  }
+
   var today = new Date();
   var todayYear = today.getFullYear();
   var todayMonth = today.getMonth() + 1;
@@ -887,6 +893,8 @@ function buildVarianceTab(config) {
     return a.localeCompare(b);
   }).map(function(key){
     var entry = agg[key];
+    var cols = entry.cols.slice();
+    cols[1] = adjustAccount_(cols[2], cols[1]); // Account override based on Project prefix
     var billable = deriveBillable_(entry.cols[2]); // Project is the 3rd element in cols
     var lookupKey = (entry.cols[0] || '') + (entry.cols[2] || '') + (entry.cols[3] || '');
     var estAct = estActMap[lookupKey] || { est: 0, act: 0 };
@@ -898,7 +906,7 @@ function buildVarianceTab(config) {
     var relYear = ymParsed ? (ymParsed.year - todayYear) : '';
     var relMonth = ymParsed ? ((todayYear - ymParsed.year) * 12 + (todayMonth - ymParsed.month)) : '';
     var projectAdj = adjustedProject_(entry.cols[2], entry.cols[3], entry.cols[0]);
-    return entry.cols.concat([entry.sum, billable, estAct.est, estAct.act, actValue, variance, staff.region || '', staff.country || '', hubVal, relYear, relMonth, projectAdj]);
+    return cols.concat([entry.sum, billable, estAct.est, estAct.act, actValue, variance, staff.region || '', staff.country || '', hubVal, relYear, relMonth, projectAdj]);
   });
 
   var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
