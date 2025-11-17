@@ -196,31 +196,33 @@ function buildFinalSchedules(config) {
 
   var overrideSheet = ss.getSheetByName(config.overrideSchedules || 'FF Schedule Override');
   var overrideMap = {};
+  var overrideAccountMap = {};
   if (overrideSheet && overrideSheet.getLastRow() > 1) {
     var overrideData = overrideSheet.getDataRange().getValues();
     var oHeaders = overrideData[0];
     var oRows = overrideData.slice(1);
-    function findOverrideIndex(pats) {
-      return oHeaders.findIndex(function(h){
-        return pats.some(function(p){return new RegExp(p,'i').test(h);});
-      });
-    }
-    var oRes = findOverrideIndex(['Resource Name','Resource']);
-    var oProj = findOverrideIndex(['Project']);
-    var oDate = findOverrideIndex(['Date']);
-    var oVal  = findOverrideIndex(['Hours','Value']);
-    if (oRes > -1 && oDate > -1 && oVal > -1) {
-      oRows.forEach(function(row){
-        var res = (row[oRes] + '').trim();
-        if (!res) return;
-        var proj = oProj > -1 ? (row[oProj] + '').trim() : '';
-        var rawDate = row[oDate];
-        var dateObj = rawDate instanceof Date ? rawDate : new Date(rawDate);
-        if (isNaN(dateObj)) return;
-        var monthKey = Utilities.formatDate(new Date(dateObj.getFullYear(), dateObj.getMonth(), 1), timezone, 'yyyy-MM');
-        var key = [res, proj, monthKey].join('|');
-        overrideMap[key] = parseFloat(row[oVal]) || 0;
-      });
+    var oResIdx = oHeaders.findIndex(function(h){return /Resource/i.test(h);});
+    var oProjIdx = oHeaders.findIndex(function(h){return /Project/i.test(h);});
+    var oAccIdx = oHeaders.findIndex(function(h){return /Account/i.test(h);});
+    var startMonthCol = 3; // columns A-C are Account, Project, Resource
+    // Iterate wide columns (month headers) and build override entries
+    for (var iRow = 0; iRow < oRows.length; iRow++) {
+      var row = oRows[iRow];
+      var oRes = oResIdx > -1 ? (row[oResIdx] + '').trim() : '';
+      var oProj = oProjIdx > -1 ? (row[oProjIdx] + '').trim() : '';
+      if (!oRes || !oProj) continue;
+      var oAcc = oAccIdx > -1 ? (row[oAccIdx] + '').trim() : '';
+      for (var col = startMonthCol; col < row.length; col++) {
+        var headerVal = oHeaders[col];
+        var dtMonth = parseMonthYearValue_(headerVal);
+        if (!dtMonth) continue;
+        var monthKey = Utilities.formatDate(dtMonth, timezone, 'yyyy-MM');
+        var key = [oRes, oProj, monthKey].join('|');
+        var hoursVal = parseFloat(row[col]);
+        if (isNaN(hoursVal) || hoursVal === 0) continue;
+        overrideMap[key] = (overrideMap[key] || 0) + hoursVal;
+        if (oAcc) overrideAccountMap[key] = oAcc;
+      }
     }
   }
 
@@ -244,6 +246,7 @@ function buildFinalSchedules(config) {
   }
 
   var outRows = [];
+  var officialKeys = {};
   if (isLongForm) {
     rows.forEach(function(row){
       var hours = row[hoursIdx];
@@ -253,12 +256,13 @@ function buildFinalSchedules(config) {
       var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
       var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
       if (!projectName) return; // skip rows with empty Project
+      if (Object.keys(staffMap).length && !staffMap[resourceName]) return; // skip if resource not in Active staff
       var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
       var overrideKey = [resourceName, projectName, monthKey].join('|');
-      var finalHours = overrideMap.hasOwnProperty(overrideKey) ? overrideMap[overrideKey] : hours;
+      var finalHours = hours + (overrideMap[overrideKey] || 0);
       var helperKey = resourceName + '-' + Utilities.formatDate(dt, timezone, 'MM-yy');
       var staff = staffMap[resourceName] || {};
-      var accountVal = accountLookup[projectName] || (accountIdx > -1 ? row[accountIdx] : '');
+      var accountVal = accountLookup[projectName] || overrideAccountMap[overrideKey] || (accountIdx > -1 ? row[accountIdx] : '');
       var hubVal = hubLookup[resourceName] || staff.hub || '';
       var newRow = [];
       if (Object.keys(staffMap).length) {
@@ -266,6 +270,7 @@ function buildFinalSchedules(config) {
       }
       newRow.push(accountVal, projectName, resourceName, dt, finalHours, helperKey);
       outRows.push(newRow);
+      officialKeys[overrideKey] = true;
     });
   } else {
     rows.forEach(function(row){
@@ -278,13 +283,14 @@ function buildFinalSchedules(config) {
         var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
         var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
         if (!projectName) continue; // skip rows with empty Project
+        if (Object.keys(staffMap).length && !staffMap[resourceName]) continue; // skip if resource not in Active staff
         var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
         var overrideKey = [resourceName, projectName, monthKey].join('|');
-        var finalHours = overrideMap.hasOwnProperty(overrideKey) ? overrideMap[overrideKey] : hours;
+        var finalHours = hours + (overrideMap[overrideKey] || 0);
 
         var helperKey = resourceName + '-' + Utilities.formatDate(dt, timezone, 'MM-yy');
         var staff = staffMap[resourceName] || {};
-        var accountVal = accountLookup[projectName] || (accountIdx > -1 ? row[accountIdx] : '');
+        var accountVal = accountLookup[projectName] || overrideAccountMap[overrideKey] || (accountIdx > -1 ? row[accountIdx] : '');
         var hubVal = hubLookup[resourceName] || staff.hub || '';
         var newRow = [];
         if (Object.keys(staffMap).length) {
@@ -292,9 +298,30 @@ function buildFinalSchedules(config) {
         }
         newRow.push(accountVal, projectName, resourceName, dt, finalHours, helperKey);
         outRows.push(newRow);
+        officialKeys[overrideKey] = true;
       }
     });
   }
+
+  // Add override-only rows not present in official schedules
+  Object.keys(overrideMap).forEach(function(key){
+    if (officialKeys[key]) return;
+    var parts = key.split('|');
+    var resourceName = parts[0], projectName = parts[1], monthKey = parts[2];
+    if (Object.keys(staffMap).length && !staffMap[resourceName]) return;
+    var dt = monthKeyToDate_(monthKey);
+    if (!dt || isNaN(dt)) return;
+    var staff = staffMap[resourceName] || {};
+    var accountVal = accountLookup[projectName] || overrideAccountMap[key] || '';
+    var hubVal = hubLookup[resourceName] || staff.hub || '';
+    var helperKey = resourceName + '-' + Utilities.formatDate(dt, timezone, 'MM-yy');
+    var newRow = [];
+    if (Object.keys(staffMap).length) {
+      newRow.push(staff.role || '', staff.practice || '', staff.location || '', hubVal);
+    }
+    newRow.push(accountVal, projectName, resourceName, dt, overrideMap[key], helperKey);
+    outRows.push(newRow);
+  });
 
   var finalSheet = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
   finalSheet.clearContents();
@@ -910,15 +937,6 @@ function determineMonthsToBuild_(ss, countryHoursSheet, timezone, config) {
       var dt = parseMonthYearValue_(row[0]);
       if (dt) add(dt);
     });
-  }
-  var scheduleSheet = ss.getSheetByName(config.consolidatedSchedulesSheet || 'Consolidated-FF Schedules');
-  if (scheduleSheet && scheduleSheet.getLastRow() >= 2) {
-    var lastCol = scheduleSheet.getLastColumn();
-    var headers = scheduleSheet.getRange(2, 1, 1, lastCol).getValues()[0];
-    for (var j = config.dataStartColumn ? config.dataStartColumn - 1 : 7; j < lastCol; j++) {
-      var headerDate = coerceToDate_(headers[j], timezone);
-      if (headerDate) add(headerDate);
-    }
   }
   if (!Object.keys(monthSet).length) {
     var start = new Date(new Date().getFullYear(), 0, 1);
