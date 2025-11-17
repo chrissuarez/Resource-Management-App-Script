@@ -807,13 +807,15 @@ function buildVarianceTab(config) {
 
   // Hub overrides from Lookups (Resource -> Hub)
   var hubLookup = {};
+  var lookupsAll = [];
   var lookupSheet = ss.getSheetByName('Lookups');
   if (lookupSheet && lookupSheet.getLastRow() > 1) {
     var lData = lookupSheet.getDataRange().getValues();
     var lHead = lData[0];
     var lResIdx = lHead.findIndex(function(h){return /Resource/i.test(h);});
     var lHubIdx = lHead.findIndex(function(h){return /Hub/i.test(h);});
-    lData.slice(1).forEach(function(r){
+    lookupsAll = lData.slice(1);
+    lookupsAll.forEach(function(r){
       var res = lResIdx > -1 ? (r[lResIdx] + '').trim() : '';
       var hub = lHubIdx > -1 ? (r[lHubIdx] + '').trim() : '';
       if (res && hub) hubLookup[res] = hub;
@@ -837,7 +839,10 @@ function buildVarianceTab(config) {
     'Var',
     'Region',
     'Country',
-    'Resource Hub'
+    'Resource Hub',
+    'Relative Year',
+    'Relative Month',
+    'Project - Adj'
   ];
 
   function deriveBillable_(projectName) {
@@ -847,6 +852,35 @@ function buildVarianceTab(config) {
     if (/opp|client admin/.test(lower)) return 'Growth';
     if (/JFGP|JFTR/i.test(p)) return 'Internal';
     return 'Billable';
+  }
+
+  var today = new Date();
+  var todayYear = today.getFullYear();
+  var todayMonth = today.getMonth() + 1;
+
+  function parseMonthString_(str) {
+    if (!str || typeof str !== 'string') return null;
+    var m = str.match(/^(\d{4})\s*-\s*(\d{2})$/);
+    if (!m) return null;
+    var year = parseInt(m[1], 10);
+    var month = parseInt(m[2], 10);
+    if (isNaN(year) || isNaN(month)) return null;
+    return { year: year, month: month };
+  }
+
+  function adjustedProject_(projectName, resourceName, ymString) {
+    if ((projectName || '') !== 'JFGP All Leave') return projectName;
+    var parsed = parseMonthString_(ymString);
+    if (!parsed) return projectName;
+    var endOfMonth = new Date(parsed.year, parsed.month, 0);
+    // Lookups column A:D required, with Resource in A? Provided formula uses Lookups!A:D col 4.
+    // Assume columns: A Project, B Account, C ?, D Date (maternity end)
+    var match = lookupsAll.find(function(row){ return (row[0] + '').trim() === resourceName || (row[6] + '').trim() === resourceName;});
+    // If not found in A, fall back to Hub lookup rows (col G/H) already loaded.
+    var colD = match ? match[3] : null;
+    var dt = colD instanceof Date ? colD : null;
+    if (dt && dt > endOfMonth) return 'Maternity Leave';
+    return 'All Leave';
   }
 
   var rows = Object.keys(agg).sort(function(a, b){
@@ -860,7 +894,11 @@ function buildVarianceTab(config) {
     var variance = actValue - (estAct.est || 0);
     var staff = staffInfo[entry.cols[3]] || {};
     var hubVal = staff.hub || hubLookup[entry.cols[3]] || '';
-    return entry.cols.concat([entry.sum, billable, estAct.est, estAct.act, actValue, variance, staff.region || '', staff.country || '', hubVal]);
+    var ymParsed = parseMonthString_(entry.cols[0]);
+    var relYear = ymParsed ? (ymParsed.year - todayYear) : '';
+    var relMonth = ymParsed ? ((todayYear - ymParsed.year) * 12 + (todayMonth - ymParsed.month)) : '';
+    var projectAdj = adjustedProject_(entry.cols[2], entry.cols[3], entry.cols[0]);
+    return entry.cols.concat([entry.sum, billable, estAct.est, estAct.act, actValue, variance, staff.region || '', staff.country || '', hubVal, relYear, relMonth, projectAdj]);
   });
 
   var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
