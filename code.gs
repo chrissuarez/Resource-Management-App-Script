@@ -430,6 +430,22 @@ function buildFinalCapacity(config) {
     }
   }
 
+  // Hub lookup from Lookups tab (Resource -> Hub)
+  var lookupSheet = ss.getSheetByName('Lookups');
+  var hubLookup = {};
+  if (lookupSheet && lookupSheet.getLastRow() > 1) {
+    var lookupData = lookupSheet.getDataRange().getValues();
+    var lHeaders = lookupData[0];
+    var lRows = lookupData.slice(1);
+    var lResIdx = lHeaders.findIndex(function(h){return /Resource/i.test(h);});
+    var lHubIdx = lHeaders.findIndex(function(h){return /Hub/i.test(h);});
+    lRows.forEach(function(row){
+      var res = lResIdx > -1 ? (row[lResIdx] + '').trim() : '';
+      var hub = lHubIdx > -1 ? (row[lHubIdx] + '').trim() : '';
+      if (res && hub) hubLookup[res] = hub;
+    });
+  }
+
   var sd = staff.getDataRange().getValues(), sh=sd[0], sr=sd.slice(1);
   function fi(p){return sh.findIndex(h=>p.some(x=>new RegExp(x,'i').test(h)));}
   var iRes = fi(['ResourceName']), iRR=fi(['ResourceRole']), iHub=fi(['Hub']), iC=fi(['Resource Country']);
@@ -439,8 +455,10 @@ function buildFinalCapacity(config) {
     var pr=r[iRR]+''; var ps=pr.split('-');
     var countryOriginal=r[iC]+'';
     var countryCode=normalizeCountryCode_(countryOriginal);
+    var hubValue = iHub > -1 ? (r[iHub] + '').trim() : '';
+    if (!hubValue && hubLookup[n]) hubValue = hubLookup[n];
     staffMap[n]={
-      hub:r[iHub]+'',
+      hub:hubValue,
       practice:ps[0].trim(),
       role:ps[1]?ps.slice(1).join('-').trim():'',
       countryOriginal:countryOriginal,
@@ -451,6 +469,22 @@ function buildFinalCapacity(config) {
 
   var ad=avail.getDataRange().getValues(), am=ad[0].slice(1).map(d=>Utilities.formatDate(new Date(d),ss.getSpreadsheetTimeZone(),'yyyy-MM'));
   var fullMap={}; ad.slice(1).forEach(r=>{var n=r[0]+''; r.slice(1).forEach((v,i)=>{fullMap[n+'|'+am[i]]=parseFloat(v)||0;});});
+
+  // Country Hours lookup by country code and month (yyyy-MM)
+  var chSheet = ss.getSheetByName(config.countryHours || 'Country Hours');
+  var countryHoursMap = {};
+  if (chSheet && chSheet.getLastRow() > 1) {
+    var chData = chSheet.getDataRange().getValues().slice(1);
+    chData.forEach(function(r){
+      var cCode = normalizeCountryCode_(r[0]);
+      var mVal = r[1];
+      var hrs = parseFloat(r[2]) || 0;
+      var mDate = mVal instanceof Date ? mVal : coerceToDate_(mVal, ss.getSpreadsheetTimeZone());
+      if (!cCode || !mDate) return;
+      var mKey = Utilities.formatDate(new Date(mDate.getFullYear(), mDate.getMonth(), 1), ss.getSpreadsheetTimeZone(), 'yyyy-MM');
+      countryHoursMap[cCode+'|'+mKey] = hrs;
+    });
+  }
 
   var sd2=sched.getDataRange().getValues(), sh2=sd2[0], sr2=sd2.slice(1);
   var iProj=sh2.findIndex(h=>/Project/i.test(h)), iVal=sh2.findIndex(h=>/Value|Hours/i.test(h)), iHelp=sh2.findIndex(h=>/Helper/i.test(h));
@@ -468,9 +502,11 @@ function buildFinalCapacity(config) {
     var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{};
     var resourceRole=(st.role||'').toLowerCase();
     var bill=billableMap.hasOwnProperty(resourceRole)?billableMap[resourceRole]:defaultBillable;
-    var f=fullMap[k], al=leave[k]||0, net=f-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
     var monthDate = new Date(m+'-01');
-    out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,f,al,nb,tbh,sch,bc]);
+    var chKey = (st.countryCode||'')+'|'+m;
+    var fullHours = countryHoursMap[chKey] || fullMap[k] || 0;
+    var al=leave[k]||0, net=fullHours-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
+    out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,fullHours,al,nb,tbh,sch,bc]);
   });
   if(out.length){
     fo.getRange(2,1,out.length,out[0].length).setValues(out);
