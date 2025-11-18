@@ -82,8 +82,8 @@ function importDataFromEmails() {
         sheet = ss.insertSheet(config.sheetName);
       } else {
         Logger.log('Clearing existing content from sheet: ' + config.sheetName);
-        // This clears all content and formatting. Assumes the CSV is a full replacement.
-        sheet.clearContents(); 
+        // Clear existing content within used range only; avoids wiping the entire sheet grid.
+        clearSheetContents_(sheet);
       }
       
       // Write data, assuming CSV includes headers starting from the first row.
@@ -324,7 +324,7 @@ function buildFinalSchedules(config) {
   });
 
   var finalSheet = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
-  finalSheet.clearContents();
+  clearSheetContents_(finalSheet);
   var staffHeaders = Object.keys(staffMap).length ? ['Resource Role','Practice','Resource Location','Resource Hub'] : [];
   var accountHeader = accountIdx > -1 ? headers[accountIdx] : 'Account';
   var headerRow = staffHeaders.concat([accountHeader, headers[projectIdx] || 'Project', headers[resourceIdx] || 'Resource Name','Date','Value','Helper']);
@@ -359,7 +359,7 @@ function buildAvailabilityMatrix(config) {
   var months = Object.keys(hmap).map(k=>k.split('|')[1]).filter((v,i,a)=>a.indexOf(v)===i).sort();
 
   var out = ss.getSheetByName(config.availabilityMatrix || 'Availability Matrix')||ss.insertSheet(config.availabilityMatrix || 'Availability Matrix');
-  out.clearContents(); out.getRange(1,1).setValue('ResourceName');
+  clearSheetContents_(out); out.getRange(1,1).setValue('ResourceName');
   months.forEach(function(m,i){var d=new Date(m+'-01');out.getRange(1,i+2).setValue(d).setNumberFormat('MMM-yy');});
 
   function cw(s,e){var c=0;for(var d=new Date(s);d<=e;d.setDate(d.getDate()+1)){if(d.getDay()>0&&d.getDay()<6)c++;}return c;}
@@ -556,7 +556,8 @@ function buildFinalCapacity(config) {
     ensureFullMapKey(parts[0], parts[1]);
   });
 
-  var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity'); fo.clear();
+  var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity');
+  clearSheetContents_(fo);
   var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','Sched Hrs','Billable Capacity'];
   fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
   Object.keys(fullMap).forEach(function(k){
@@ -627,7 +628,7 @@ function importAndFilterActiveStaff(config) {
     filtered.push(row);
   });
 
-  destSheet.clearContents();
+  clearSheetContents_(destSheet);
   destSheet.getRange(1, 1, filtered.length, filtered[0].length).setValues(filtered);
 }
 
@@ -721,7 +722,7 @@ function buildEstVsActAggregate(config) {
     output.push([parts[0], parts[1], monthDate, est, act, act - est]);
   });
 
-  destSheet.clearContents();
+  clearSheetContents_(destSheet);
   var header = ['Resource Name', 'Project', 'Month', 'Estimated Hours', 'Actual Hours', 'Variance'];
   destSheet.getRange(1, 1, 1, header.length).setValues([header]);
   if (output.length) {
@@ -835,7 +836,7 @@ function rebuildVarianceSourceSheet_(config) {
     return (a[1] || '').localeCompare(b[1] || '');
   });
 
-  destSheet.clearContents();
+  clearSheetContents_(destSheet);
   destSheet.getRange(1, 1, 1, header.length).setValues([header]);
 
   if (combined.length) {
@@ -1053,7 +1054,7 @@ function buildVarianceTab(config) {
   });
 
   var dest = ss.getSheetByName(destName) || ss.insertSheet(destName);
-  dest.clearContents();
+  clearSheetContents_(dest);
   dest.getRange(1, 1, 1, outHeader.length).setValues([outHeader]);
   if (rows.length) {
     dest.getRange(2, 1, rows.length, outHeader.length).setValues(rows);
@@ -1085,7 +1086,10 @@ function refreshLookupsFromConfig_(config) {
     }
     var dest = ss.getSheetByName('Lookups') || ss.insertSheet('Lookups');
     // Only refresh columns A:E so we don't overwrite locally maintained columns (e.g., G:J Hub overrides).
-    dest.getRange(1, 1, dest.getMaxRows(), 5).clearContent();
+    var clearRows = Math.max(dest.getLastRow(), values.length);
+    if (clearRows) {
+      dest.getRange(1, 1, clearRows, 5).clearContent();
+    }
     dest.getRange(1, 1, values.length, values[0].length).setValues(values);
     // Reapply helper formulas in Accounts / Practices sections (L:N) without touching user-entered overrides.
     dest.getRange('L1').setValue('Accounts');
@@ -1154,6 +1158,15 @@ var DEFAULT_MONTH_RANGE_MONTHS = 36;
 
 function ensureSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function clearSheetContents_(sheet) {
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow && lastCol) {
+    sheet.getRange(1, 1, lastRow, lastCol).clearContent();
+  }
 }
 
 /**
@@ -1293,7 +1306,7 @@ function setupRoleConfigTab() {
   });
   if (hasData) return;
 
-  sheet.clear();
+  clearSheetContents_(sheet);
   var headers = ['Role','Billable %'];
   var defaults = [
     ['(default)','100%'],
@@ -1330,7 +1343,7 @@ function refreshCountryHoursFromRegion_(ss, config) {
         outputRows.push([ct, monthKey, hours]);
       });
     });
-    countryHoursSheet.clear();
+    clearSheetContents_(countryHoursSheet);
     countryHoursSheet.getRange(1, 1, 1, 3).setValues([['Country','Month','Hours']]);
     if (outputRows.length) {
       countryHoursSheet.getRange(2, 1, outputRows.length, 3).setValues(outputRows);
@@ -1508,10 +1521,32 @@ function monthKeyToDate_(key) {
 function refreshAll() {
   var config = getGlobalConfig();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Phase 1: fast imports and prerequisites.
   importDataFromEmails(config);
   importAndFilterActiveStaff(config);
   refreshLookupsFromConfig_(config);
+  SpreadsheetApp.flush();
   buildEstVsActAggregate(config);
+  // Schedule Phase 2 to reduce risk of Apps Script 6‑minute timeouts on larger sheets.
+  scheduleRefreshAllPhase2_(ss);
+}
+
+function scheduleRefreshAllPhase2_(ss) {
+  // Clean up any pending phase-2 triggers to avoid duplicates.
+  ScriptApp.getProjectTriggers().forEach(function(trig){
+    if (trig.getHandlerFunction && trig.getHandlerFunction() === 'refreshAllPhase2') {
+      ScriptApp.deleteTrigger(trig);
+    }
+  });
+  ScriptApp.newTrigger('refreshAllPhase2')
+    .timeBased()
+    .after(30 * 1000) // give Sheets a moment to settle
+    .create();
+}
+
+function refreshAllPhase2() {
+  var config = getGlobalConfig();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
   rebuildVarianceSourceSheet_(config);
   refreshCountryHoursFromRegion_(ss, config);
   buildFinalSchedules(config);
