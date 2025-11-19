@@ -998,9 +998,9 @@ function getSpreadsheetIdFromConfig_() {
   var fallback = active.getId();
   var configSheet = active.getSheetByName('Config');
   if (!configSheet) return fallback;
-  var raw = (configSheet.getRange('C2').getDisplayValue() + '').trim();
+  var raw = (configSheet.getRange('C23').getDisplayValue() + '').trim(); // Changed from C24 to C23
   if (!raw) return fallback;
-  var match = raw.match(/[-\w]{25,}/i);
+  var match = raw.match(/[-\w]{25,}/);
   return match ? match[0] : raw;
 }
 
