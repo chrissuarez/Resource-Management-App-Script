@@ -38,7 +38,7 @@ function importDataFromEmails() {
     emailConfigs.forEach(function(config) {
       Logger.log('Processing label: ' + config.label + ' for sheet: ' + config.sheetName);
       
-      // Search for emails with the label. GmailApp.search returns threads sorted newest first.
+      // Search for emails with the label. GmailApp.search returns threads sorted newest first. 
       var threads = GmailApp.search('label:' + config.label); 
       
       if (!threads.length) {
@@ -46,23 +46,8 @@ function importDataFromEmails() {
         return; // continue to next config in the forEach loop
       }
       
-      // Get the newest message from the newest thread
       var message = threads[0].getMessages()[0]; 
-      // If a thread could have multiple messages and you need the *very latest* message
-      // across all messages in that thread, you might need to sort messages by date.
-      // However, threads[0].getMessages()[0] usually gives the initial or most relevant message.
-      // For single-message threads (common for reports), this is fine.
-      // If you want the absolute latest message in the thread:
-      // var messagesInThread = threads[0].getMessages();
-      // var message = messagesInThread[messagesInThread.length - 1];
-
-
       var attachments = message.getAttachments();
-      
-      // Find the CSV attachment. Since you confirmed only one attachment (which is the CSV),
-      // you could theoretically use attachments[0] if you are absolutely certain no other
-      // inline images (like signatures) could ever be present.
-      // Using .find is safer.
       var csvAttachment = attachments.find(att => att.getContentType() === 'text/csv' || att.getContentType() === 'application/csv');
 
       if (!csvAttachment) {
@@ -70,13 +55,13 @@ function importDataFromEmails() {
         return; // continue to next config
       }
       
-      var charEncoding = config.encoding || 'UTF-8'; // Default to UTF-8 if not specified
+      var charEncoding = config.encoding || 'UTF-8';
       var csvDataString = csvAttachment.getDataAsString(charEncoding);
       var data = Utilities.parseCsv(csvDataString);
 
       if (!data || data.length === 0) {
         Logger.log('CSV data is empty for ' + config.label);
-        return; // continue to next config
+        return;
       }
 
       var sheet = ss.getSheetByName(config.sheetName);
@@ -85,22 +70,14 @@ function importDataFromEmails() {
         sheet = ss.insertSheet(config.sheetName);
       } else {
         Logger.log('Clearing existing content from sheet: ' + config.sheetName);
-        // Clear existing content within used range only; avoids wiping the entire sheet grid.
         clearSheetContents_(sheet);
       }
       
-      // Write data, assuming CSV includes headers starting from the first row.
       sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
       Logger.log('Imported data from label "' + config.label + '" to sheet "' + config.sheetName + '". Rows: ' + data.length + '. Email subject: ' + message.getSubject());
-      
-      // Optional: Mark email as read or archive it
-      // message.markRead();
-      // GmailApp.moveThreadToArchive(threads[0]);
     });
   } catch(e) {
     Logger.log('Import error: ' + e.toString() + ' Stack: ' + e.stack);
-    // Consider sending an email notification for critical errors
-    // MailApp.sendEmail('your-email@example.com', 'App Script Import Error', 'Error: ' + e.toString() + '\nStack: ' + e.stack);
   }
 }
 
@@ -118,7 +95,6 @@ function buildFinalSchedules(config) {
   var requestedMetadataCols = Math.max(1, parseInt(config.dataStartColumn, 10) || 8) - 1;
   var metadataColumns = Math.min(headers.length - 1, requestedMetadataCols);
   var timezone = ss.getSpreadsheetTimeZone();
-  // Auto-detect the first data column (date-like) if the configured start is beyond headers.
   var dataStartIdx = metadataColumns;
   for (var probe = 0; probe < headers.length; probe++) {
     var idx = probe;
@@ -126,7 +102,6 @@ function buildFinalSchedules(config) {
     var maybeDate = coerceToDate_(headers[idx], timezone);
     if (maybeDate) { dataStartIdx = idx; break; }
   }
-  // If no date-like header found, keep the configured start.
 
   function normalizeHeaderValue(h) {
     return (h === null || typeof h === 'undefined') ? '' : (h + '').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
@@ -144,7 +119,6 @@ function buildFinalSchedules(config) {
   var accountIdx = findIndex(['Account','Client']);
   var hoursIdx = findIndex(['Estimated Hours','Est Hours','Hours','Value','Estimated-Hours']);
   var dateIdx = findIndex(['End Date','Date','End-Date']);
-  // Heuristic fallback for the simple long-form 4-column layout.
   if (hoursIdx === -1 && headers.length === 4) hoursIdx = 2;
   if (dateIdx === -1 && headers.length === 4) dateIdx = 3;
   var isLongForm = hoursIdx > -1 && dateIdx > -1 && rows.length;
@@ -181,17 +155,16 @@ function buildFinalSchedules(config) {
     });
   }
 
-  // Build lookup maps for Account (by Project) and Hub (by Resource) from Lookups tab.
   var lookupSheet = ss.getSheetByName('Lookups');
   var accountLookup = {};
   var hubLookup = {};
   if (lookupSheet && lookupSheet.getLastRow() > 1) {
     var lookupData = lookupSheet.getDataRange().getValues();
     lookupData.slice(1).forEach(function(row){
-      var projectVal = (row[0] + '').trim(); // Col A: Project
-      var accountVal = (row[1] + '').trim(); // Col B: Account
-      var resVal = (row[6] + '').trim();     // Col G: Resource
-      var hubVal = (row[7] + '').trim();     // Col H: Hub
+      var projectVal = (row[0] + '').trim();
+      var accountVal = (row[1] + '').trim();
+      var resVal = (row[6] + '').trim();
+      var hubVal = (row[7] + '').trim();
       if (projectVal && accountVal) accountLookup[projectVal] = accountVal;
       if (resVal && hubVal) hubLookup[resVal] = hubVal;
     });
@@ -207,9 +180,8 @@ function buildFinalSchedules(config) {
     var oResIdx = oHeaders.findIndex(function(h){return /Resource/i.test(h);});
     var oProjIdx = oHeaders.findIndex(function(h){return /Project/i.test(h);});
     var oAccIdx = oHeaders.findIndex(function(h){return /Account/i.test(h);});
-    var startMonthCol = 3; // columns A-C are Account, Project, Resource
-    // Iterate wide columns (month headers) and build override entries
-    for (var iRow = 0; iRow < oRows.length; iRow++) {
+    var startMonthCol = 3;
+    for (var iRow = 0; i < oRows.length; iRow++) {
       var row = oRows[iRow];
       var oRes = oResIdx > -1 ? (row[oResIdx] + '').trim() : '';
       var oProj = oProjIdx > -1 ? (row[oProjIdx] + '').trim() : '';
@@ -258,8 +230,8 @@ function buildFinalSchedules(config) {
       if (!dt || isNaN(dt)) return;
       var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
       var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
-      if (!projectName) return; // skip rows with empty Project
-      if (Object.keys(staffMap).length && !staffMap[resourceName]) return; // skip if resource not in Active staff
+      if (!projectName) return;
+      if (Object.keys(staffMap).length && !staffMap[resourceName]) return;
       var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
       var overrideKey = [resourceName, projectName, monthKey].join('|');
       var finalHours = hours + (overrideMap[overrideKey] || 0);
@@ -285,8 +257,8 @@ function buildFinalSchedules(config) {
         if (isNaN(dt)) continue;
         var resourceName = resourceIdx > -1 ? (row[resourceIdx] + '').trim() : '';
         var projectName = projectIdx > -1 ? (row[projectIdx] + '').trim() : '';
-        if (!projectName) continue; // skip rows with empty Project
-        if (Object.keys(staffMap).length && !staffMap[resourceName]) continue; // skip if resource not in Active staff
+        if (!projectName) continue;
+        if (Object.keys(staffMap).length && !staffMap[resourceName]) return;
         var monthKey = Utilities.formatDate(new Date(dt.getFullYear(), dt.getMonth(), 1), timezone, 'yyyy-MM');
         var overrideKey = [resourceName, projectName, monthKey].join('|');
         var finalHours = hours + (overrideMap[overrideKey] || 0);
@@ -306,7 +278,6 @@ function buildFinalSchedules(config) {
     });
   }
 
-  // Add override-only rows not present in official schedules
   Object.keys(overrideMap).forEach(function(key){
     if (officialKeys[key]) return;
     var parts = key.split('|');
@@ -386,7 +357,7 @@ function buildAvailabilityMatrix(config) {
   if(outData.length) out.getRange(2,1,outData.length,outData[0].length).setValues(outData);
 }
 
-// ----- 3. Build final capacity table ----- 
+// ----- 3. Build final capacity table -----
 function buildFinalCapacity(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sched = ss.getSheetByName(config.finalSchedules || 'Final - Schedules');
@@ -433,7 +404,6 @@ function buildFinalCapacity(config) {
     }
   }
 
-  // Hub lookup from Lookups tab (Resource -> Hub)
   var lookupSheet = ss.getSheetByName('Lookups');
   var hubLookup = {};
   if (lookupSheet && lookupSheet.getLastRow() > 1) {
@@ -474,7 +444,6 @@ function buildFinalCapacity(config) {
     };
   });
 
-  // Country Hours lookup by country code and month (yyyy-MM)
   var countryHoursMap = {};
   var monthSet = {};
   if (chSheet && chSheet.getLastRow() > 1) {
@@ -491,7 +460,6 @@ function buildFinalCapacity(config) {
     });
   }
 
-  // Build availability per resource/month directly from Country Hours (prorated by FTE and start date)
   function countWorkingDaysInclusive_(startDate, endDate) {
     var count = 0;
     var cursor = new Date(startDate);
@@ -504,12 +472,12 @@ function buildFinalCapacity(config) {
   }
 
   function availableHoursForMonth_(staffEntry, monthKey) {
-    var base = countryHoursMap[(staffEntry.countryCode || '')+'|'+monthKey];
+    var base = countryHoursMap[(staffEntry.countryCode || '') + '|' + monthKey];
     if (!base) return 0;
     var fte = staffEntry.fte || 0;
     if (!fte) return 0;
-    var monthStart = new Date(monthKey+'-01');
-    var monthEnd = new Date(monthStart.getFullYear(),monthStart.getMonth()+1,0);
+    var monthStart = new Date(monthKey + '-01');
+    var monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
     if (!staffEntry.startDate) {
       return base * fte;
     }
@@ -537,13 +505,8 @@ function buildFinalCapacity(config) {
   var sd2=sched.getDataRange().getValues(), sh2=sd2[0], sr2=sd2.slice(1);
   var iProj=sh2.findIndex(h=>/Project/i.test(h)), iVal=sh2.findIndex(h=>/Value|Hours/i.test(h)), iHelp=sh2.findIndex(h=>/Helper/i.test(h));
   var leave={}, schedM={};
-  sr2.forEach(r=>{
-    var pj=r[iProj]+'', h=r[iHelp]+''; 
-    var m=h.match(/^(.+)-(\d{2})-(\d{2})$/); 
-    if(!m)return;
-    var nm=m[1], mo=m[2], yr=m[3]; 
-    var key=(yr.length===2?('20'+yr):yr)+'-'+mo;
-    var hrs=parseFloat(r[iVal])||0;
+  sr2.forEach(r=>{var pj=r[iProj]+'', h=r[iHelp]+''; var m=h.match(/^(.+)-(\d{2})-(\d{2})$/); if(!m)return;
+    var nm=m[1], mo=m[2], yr=m[3]; var key=(yr.length===2?('20'+yr):yr)+'-'+mo; var hrs=parseFloat(r[iVal])||0;
     if(pj===(config.leaveProjectName||'JFGP All Leave')) leave[nm+'|'+key]=(leave[nm+'|'+key]||0)+hrs;
     else schedM[nm+'|'+key]=(schedM[nm+'|'+key]||0)+hrs;
   });
@@ -565,7 +528,8 @@ function buildFinalCapacity(config) {
   });
 
   var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity');
-  clearSheetContents_(fo); var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','SchedHrs','Billable Capacity'];
+  clearSheetContents_(fo);
+  var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','SchedHrs','Billable Capacity'];
   fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
   Object.keys(fullMap).forEach(function(k){
     var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{};
@@ -574,8 +538,7 @@ function buildFinalCapacity(config) {
     var monthDate = new Date(m+'-01');
     var chKey = (st.countryCode||'')+'|'+m;
     var fullHours = countryHoursMap[chKey] || fullMap[k] || 0;
-    var al=leave[k]||0, net=fullHours-al;
-    var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
+    var al=leave[k]||0, net=fullHours-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
     out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,fullHours,al,nb,tbh,sch,bc]);
   });
   if(out.length){
@@ -585,7 +548,7 @@ function buildFinalCapacity(config) {
   }
 }
 
-// ----- 4. Wrapper to run full refresh ----- 
+// ----- 4. Wrapper to run full refresh -----
 function importAndFilterActiveStaff(config) {
   var sourceUrl = config.activeStaffUrl;
   if (!sourceUrl) throw new Error('Active Staff URL missing from Config sheet');
@@ -618,7 +581,6 @@ function importAndFilterActiveStaff(config) {
     throw new Error('Required columns missing in Active Staff source (need Parent Practice, Resource Country, Resource Title).');
   }
 
-  // Match original QUERY: Col1 == Config!C4, Col6 matches Config!C6, NOT Col3 contains "Contractor"
   var filterCfg = getStaffFilterConfig_();
   var practiceFilter = (filterCfg.practice || '').toLowerCase();
   var regionPattern = filterCfg.regionPattern ? new RegExp(filterCfg.regionPattern, 'i') : null;
@@ -740,6 +702,143 @@ function buildEstVsActAggregate(config) {
 }
 
 /**
+ * Rebuilds the "All Rows Needed Data Source" tab (or configured Variance Source Sheet) 
+ * without relying on Sheet QUERY, then reapplies the downstream array formulas in E:L. 
+ * This keeps the existing header if present; otherwise a default 12-column header is used.
+ */
+function rebuildVarianceSourceSheet_(config) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var destName = config.varianceSourceSheet || 'All Rows Needed Data Source';
+  var destSheet = ss.getSheetByName(destName) || ss.insertSheet(destName);
+
+  var defaultHeader = [
+    'Resource',
+    'Project',
+    'Start Date',
+    'Date',
+    'Account',
+    'Date Adj',
+    'Capability Partner',
+    'Parent Practice',
+    'Practice',
+    'ResourceRole',
+    'Relative Month',
+    'Year - Month'
+  ];
+
+  var header = defaultHeader;
+  if (destSheet.getLastRow() >= 1 && destSheet.getLastColumn() >= 1) {
+    var existingHeader = destSheet.getRange(1, 1, 1, Math.max(destSheet.getLastColumn(), defaultHeader.length)).getValues()[0];
+    if (existingHeader.some(function(c) { return c !== null && c !== ''; })) {
+      header = existingHeader;
+    }
+  }
+
+  var estSheet = ss.getSheetByName(config.importEstVsAct || 'Est vs Act - Import');
+  var actSheet = ss.getSheetByName(config.importActuals || 'Actuals - Import');
+  var lookupsSheet = ss.getSheetByName('Lookups');
+  var activeStaffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
+  var timezone = ss.getSpreadsheetTimeZone();
+
+  var accountMap = {};
+  if (lookupsSheet && lookupsSheet.getLastRow() > 1) {
+    var lData = lookupsSheet.getDataRange().getValues();
+    lData.slice(1).forEach(function(r) {
+      var proj = (r[0] + '').trim();
+      var acc = (r[1] + '').trim();
+      if (proj && acc) accountMap[proj] = acc;
+    });
+  }
+
+  var resourceMap = {};
+  if (activeStaffSheet && activeStaffSheet.getLastRow() > 1) {
+    var asData = activeStaffSheet.getDataRange().getValues();
+    var IDX_NAME = 7;
+    var IDX_CAP = 8;
+    var IDX_PARENT = 0;
+    var IDX_PRACTICE = 1;
+    var IDX_ROLE = 3;
+    asData.slice(1).forEach(function(r){
+      var resName = r.length > IDX_NAME ? (r[IDX_NAME] + '').trim() : '';
+      if (!resName) return;
+      var cap = r.length > IDX_CAP ? (r[IDX_CAP] + '').trim() : '';
+      var parent = r.length > IDX_PARENT ? (r[IDX_PARENT] + '').trim() : '';
+      var practice = r.length > IDX_PRACTICE ? (r[IDX_PRACTICE] + '').trim() : '';
+      var roleRaw = r.length > IDX_ROLE ? (r[IDX_ROLE] + '').trim() : '';
+      var role = roleRaw;
+      if (practice && roleRaw && roleRaw.toLowerCase().indexOf((practice + ' -').toLowerCase()) === 0) {
+        role = roleRaw.substring((practice + ' - ').length);
+      }
+      resourceMap[resName] = {
+        cap: cap || 'Not in lookup',
+        parent: parent || 'Not in lookup',
+        practice: practice || 'Not in lookup',
+        role: role || 'Not in lookup'
+      };
+    });
+  }
+
+  var combined = [];
+
+  if (estSheet && estSheet.getLastRow() > 1) {
+    var estValues = estSheet.getDataRange().getValues().slice(1);
+    estValues.forEach(function(r) {
+      var project = (r[0] + '').trim();
+      var resource = (r[1] + '').trim();
+      if (!project || !resource) return;
+      combined.push([resource, project, '', r[4]]);
+    });
+  }
+
+  if (actSheet && actSheet.getLastRow() > 1) {
+    var actValues = actSheet.getDataRange().getValues().slice(1);
+    actValues.forEach(function(r) {
+      var project = (r[1] + '').trim();
+      if (!project) return;
+      combined.push([r[0], r[1], r[2], r[3]]);
+    });
+  }
+
+  combined.sort(function(a, b) {
+    return (a[1] || '').localeCompare(b[1] || '');
+  });
+
+  clearSheetContents_(destSheet);
+  destSheet.getRange(1, 1, 1, header.length).setValues([header]);
+
+  if (combined.length) {
+    var configSheet = ss.getSheetByName('Config');
+    var anchorCell = configSheet ? configSheet.getRange('C7').getValue() : null;
+    var anchorDate = coerceToDate_(anchorCell, timezone);
+    var output = combined.map(function(row){
+      var res = row[0], proj = row[1], startDate = row[2], dateVal = row[3];
+      var acct = accountMap[proj] || '#N/A';
+      var dateAdj = dateVal ? coerceToDate_(dateVal, timezone) : null;
+      var resInfo = resourceMap[res] || { cap:'Not in lookup', parent:'Not in lookup', practice:'Not in lookup', role:'Not in lookup' };
+      var relMonth = (res && dateAdj && anchorDate) ? ((dateAdj.getFullYear() - anchorDate.getFullYear()) * 12 + (dateAdj.getMonth() - anchorDate.getMonth())) : '';
+      var yearMonth = dateAdj ? Utilities.formatDate(new Date(dateAdj.getFullYear(), dateAdj.getMonth() + 1, 0), timezone, 'yyyy - MM') : '';
+      return [
+        res,
+        proj,
+        startDate || '',
+        dateAdj || '',
+        acct,
+        dateAdj || '',
+        resInfo.cap,
+        resInfo.parent,
+        resInfo.practice,
+        resInfo.role,
+        relMonth,
+        yearMonth
+      ];
+    });
+    destSheet.getRange(2, 1, output.length, header.length).setValues(output);
+  }
+
+  destSheet.autoResizeColumns(1, Math.max(header.length, 12));
+}
+
+/**
  * Rebuilds the Variance tab (replacing previous sheet queries) by grouping
  * the "All Rows Needed Data Source" sheet with the same logic as:
  * SELECT L, E, B, A, G, H, I, J, sum(C) WHERE F IS NOT NULL AND K <= 0 AND K > -4 GROUP BY L, E, B, A, G, H, I, J
@@ -761,9 +860,9 @@ function buildVarianceTab(config) {
   data.slice(1).forEach(function(row){
     if (!row.length) return;
     var fVal = row[5];
-    if (fVal === null || typeof fVal === 'undefined' || (fVal + '').trim() === '') return; // WHERE F is not null
+    if (fVal === null || typeof fVal === 'undefined' || (fVal + '').trim() === '') return;
     var kVal = parseFloat(row[10]);
-    if (isNaN(kVal) || kVal > 0 || kVal <= -4) return; // K <= 0 AND K > -4
+    if (isNaN(kVal) || kVal > 0 || kVal <= -4) return;
     var cVal = parseFloat(row[2]);
     if (isNaN(cVal)) cVal = 0;
     var keyParts = [row[11], row[4], row[1], row[0], row[6], row[7], row[8], row[9]];
@@ -774,7 +873,6 @@ function buildVarianceTab(config) {
     agg[key].sum += cVal;
   });
 
-  // Lookup Estimated/Actual hours from Est vs Act aggregated sheet keyed by Month+Project+Resource.
   var estActSheet = ss.getSheetByName(config.finalEstVsAct || 'Est vs Act - Aggregated');
   var estActMap = {};
   if (estActSheet && estActSheet.getLastRow() > 1) {
@@ -792,7 +890,6 @@ function buildVarianceTab(config) {
     });
   }
 
-  // Staff lookups for Region/Country/Hub
   var staffInfo = {};
   var staffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
   if (staffSheet && staffSheet.getLastRow() > 1) {
@@ -814,7 +911,6 @@ function buildVarianceTab(config) {
     });
   }
 
-  // Hub overrides from Lookups (Resource -> Hub)
   var hubLookup = {};
   var lookupsAll = [];
   var lookupSheet = ss.getSheetByName('Lookups');
@@ -842,8 +938,10 @@ function buildVarianceTab(config) {
     headers[9] || 'ResourceRole',
     'Act TC',
     'Billable',
-    'Sched.','Est ActHrs',
-    'Act.','Variance',
+    'Sched.',
+    'Est Act Hrs',
+    'Act.',
+    'Var',
     'Region',
     'Country',
     'Resource Hub',
@@ -857,7 +955,7 @@ function buildVarianceTab(config) {
     if (!p) return '';
     var lower = p.toLowerCase();
     if (/opp|client admin/.test(lower)) return 'Growth';
-    if (/^JFGP|JFTR/i.test(p)) return 'Internal';
+    if (/JFGP|JFTR/i.test(p)) return 'Internal';
     return 'Billable';
   }
 
@@ -873,10 +971,10 @@ function buildVarianceTab(config) {
 
   function parseMonthString_(str) {
     if (!str || typeof str !== 'string') return null;
-    var m = str.match(/^(\d{4})[-\/](\d{1,2})$/);
+    var m = str.match(/^(\d{4})\s*-\s*(\d{2})$/);
     if (!m) return null;
-    var year = parseInt(m[1],10);
-    var month = parseInt(m[2],10);
+    var year = parseInt(m[1], 10);
+    var month = parseInt(m[2], 10);
     if (isNaN(year) || isNaN(month)) return null;
     return { year: year, month: month };
   }
@@ -886,10 +984,7 @@ function buildVarianceTab(config) {
     var parsed = parseMonthString_(ymString);
     if (!parsed) return projectName;
     var endOfMonth = new Date(parsed.year, parsed.month, 0);
-    // Lookups column A:D required, with Resource in A? Provided formula uses Lookups!A:D col 4.
-    // Assume columns: A Project, B Account, C ?, D Date (maternity end)
     var match = lookupsAll.find(function(row){ return (row[0] + '').trim() === resourceName || (row[6] + '').trim() === resourceName;});
-    // If not found in A, fall back to Hub lookup rows (col G/H) already loaded.
     var colD = match ? match[3] : null;
     var dt = colD instanceof Date ? colD : null;
     if (dt && dt > endOfMonth) return 'Maternity Leave';
@@ -904,8 +999,8 @@ function buildVarianceTab(config) {
   }).map(function(key){
     var entry = agg[key];
     var cols = entry.cols.slice();
-    cols[1] = adjustAccount_(cols[2], cols[1]); // Account override based on Project prefix
-    var billable = deriveBillable_(entry.cols[2]); // Project is the 3rd element in cols
+    cols[1] = adjustAccount_(cols[2], cols[1]);
+    var billable = deriveBillable_(entry.cols[2]);
     var lookupKey = (entry.cols[0] || '') + (entry.cols[2] || '') + (entry.cols[3] || '');
     var estAct = estActMap[lookupKey] || { est: 0, act: 0 };
     var actValue = estAct.act && estAct.act !== 0 ? estAct.act : entry.sum;
@@ -925,8 +1020,6 @@ function buildVarianceTab(config) {
   if (rows.length) {
     dest.getRange(2, 1, rows.length, outHeader.length).setValues(rows);
   }
-
-  dest.autoResizeColumns(1, Math.max(outHeader.length, 12));
 }
 
 /**
@@ -953,13 +1046,11 @@ function refreshLookupsFromConfig_(config) {
       return false;
     }
     var dest = ss.getSheetByName('Lookups') || ss.insertSheet('Lookups');
-    // Only refresh columns A:E so we don't overwrite locally maintained columns (e.g., G:J Hub overrides).
     var clearRows = Math.max(dest.getLastRow(), values.length);
     if (clearRows) {
       dest.getRange(1, 1, clearRows, 5).clearContent();
     }
     dest.getRange(1, 1, values.length, values[0].length).setValues(values);
-    // Reapply helper formulas in Accounts / Practices sections (L:N) without touching user-entered overrides.
     dest.getRange('L1').setValue('Accounts');
     dest.getRange('L2').setFormula('=SORT(UNIQUE(FILTER(B2:B, E2:E <> "Project Close Out")),1,1)');
     dest.getRange('N1').setValue('Practices for Actuals Report');
@@ -1096,6 +1187,67 @@ function getGlobalConfig() {
   };
 
   return settings;
+}
+
+function ensureRoleConfigSheet_(ss) {
+  var sheet = ss.getSheetByName('Role Config');
+  if (sheet) return sheet;
+  sheet = ss.insertSheet('Role Config');
+  var headers = ['Role', 'Billable %'];
+  var rows = [
+    ['(default)', '100%'],
+    ['VP', '50%'],
+    ['Director', '70%'],
+    ['Executive', '80%'],
+    ['Manager', '80%']
+  ];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  sheet.autoResizeColumns(1, headers.length);
+  return sheet;
+}
+
+function setupConfigTab() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
+  var lastRow = Math.max(sheet.getLastRow(), 1);
+  var existingValues = sheet.getRange(1, 2, lastRow, 1).getDisplayValues();
+  var existingKeys = {};
+  existingValues.forEach(function(row){
+    var key = (row[0] + '').trim();
+    if (key) existingKeys[key] = true;
+  });
+
+  var requiredEntries = [
+    { key: 'IMPORT-FF Schedules', sample: 'IMPORT-FF Schedules' },
+    { key: 'Est vs Act - Import', sample: 'Est vs Act - Import' },
+    { key: 'Actuals - Import', sample: 'Actuals - Import' },
+    { key: 'Active Staff URL', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE/edit' },
+    { key: 'Active Staff Source Sheet', sample: 'Staff Export' },
+    { key: 'Active Staff Practice Filter', sample: 'Earned Media (H)' },
+    { key: 'Active Staff Country Regex', sample: 'UK|United Kingdom|United States|US' },
+    { key: 'Active Staff Sheet', sample: 'Active staff' },
+    { key: 'FF Schedule Override Sheet', sample: 'FF Schedule Override' },
+    { key: 'Country Hours Sheet', sample: 'Country Hours' },
+    { key: 'Availability Matrix Sheet', sample: 'Availability Matrix' },
+    { key: 'Consolidated Schedules Sheet', sample: 'Consolidated-FF Schedules' },
+    { key: 'Final - Schedules Sheet', sample: 'Final - Schedules' },
+    { key: 'Final - Capacity Sheet', sample: 'Final - Capacity' },
+    { key: 'Est vs Act - Aggregated Sheet', sample: 'Est vs Act - Aggregated' },
+    { key: 'Variance Source Sheet', sample: 'All Rows Needed Data Source' },
+    { key: 'Variance Sheet', sample: 'Variance' },
+    { key: 'Role Config Sheet', sample: 'Role Config' },
+    { key: 'Leave Project Name', sample: 'JFGP All Leave' },
+    { key: 'Data Start Column', sample: '8' },
+    { key: 'Global Holidays', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE_HOLIDAYS/edit' }
+  ];
+
+  requiredEntries.forEach(function(entry){
+    if (!existingKeys[entry.key]) {
+      sheet.appendRow(['', entry.key, entry.sample]);
+      existingKeys[entry.key] = true;
+    }
+  });
 }
 
 function setupRoleConfigTab() {
@@ -1327,13 +1479,11 @@ function monthKeyToDate_(key) {
 
 function refreshAll() {
   var config = getGlobalConfig();
-  // Phase 1: fast imports and prerequisites.
+  // Phase 1, Step 1: fast email import. 
   importDataFromEmails(config);
-  importAndFilterActiveStaff(config);
-  refreshLookupsFromConfig_(config);
   SpreadsheetApp.flush();
-  // Schedule the first step of Phase 2 to reduce risk of timeouts.
-  scheduleNextStep_('phase2_step1_buildEstVsAct');
+  // Schedule the next step of Phase 1.
+  scheduleNextStep_('phase1_step2_importActiveStaff');
 }
 
 function scheduleNextStep_(functionName) {
@@ -1341,21 +1491,23 @@ function scheduleNextStep_(functionName) {
   ScriptApp.getProjectTriggers().forEach(function(trig){
     if (trig.getHandlerFunction && (
         trig.getHandlerFunction() === functionName || 
+        trig.getHandlerFunction().startsWith('phase1_') ||
         trig.getHandlerFunction().startsWith('phase2_') ||
-        trig.getHandlerFunction() === 'refreshAllPhase2' // Old trigger name
+        trig.getHandlerFunction() === 'refreshAllPhase2'
       )) {
       ScriptApp.deleteTrigger(trig);
     }
   });
-  // Create a trigger for the next step in the chain.
-  ScriptApp.newTrigger(functionName)
-    .timeBased()
-    .after(20 * 1000) // give Sheets a moment to settle
-    .create();
+  if (functionName) {
+    ScriptApp.newTrigger(functionName)
+      .timeBased()
+      .after(20 * 1000)
+      .create();
+  }
 }
 
 function refreshAllPhase2() {
-  // This function is now deprecated and will be broken into smaller, chained functions.
+  // This function is now deprecated and will be broken into smaller, chained functions. 
   // It is kept here for reference during the refactor but should not be called directly.
   var config = getGlobalConfig();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1380,7 +1532,6 @@ function onOpen() {
       .addItem('Run Setup','runSetup')
       .addToUi();
   } catch (err) {
-    // UI not available in this execution context (e.g., headless/Apps Script API).
     Logger.log('onOpen skipped (no UI available): ' + err);
   }
 }
@@ -1452,6 +1603,33 @@ function getStaffFilterConfig_() {
 
 function testVariance() {
   buildVarianceTab(getGlobalConfig());
+}
+
+// ----- Chained Execution for Phase 1 ----- 
+
+function phase1_step2_importActiveStaff() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 1, Step 2: importAndFilterActiveStaff');
+    importAndFilterActiveStaff(config);
+    Logger.log('Completed Step 2. Scheduling Step 3.');
+    scheduleNextStep_('phase1_step3_refreshLookups');
+  } catch (e) {
+    Logger.log('Error in step 2 (importAndFilterActiveStaff): ' + e.toString());
+  }
+}
+
+function phase1_step3_refreshLookups() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 1, Step 3: refreshLookupsFromConfig_');
+    refreshLookupsFromConfig_(config);
+    SpreadsheetApp.flush();
+    Logger.log('Completed Step 3. Scheduling Phase 2.');
+    scheduleNextStep_('phase2_step1_buildEstVsAct');
+  } catch (e) {
+    Logger.log('Error in step 3 (refreshLookupsFromConfig_): ' + e.toString());
+  }
 }
 
 // ----- Chained Execution for Phase 2 ----- 
