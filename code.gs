@@ -4,7 +4,7 @@
  * Adds custom menu for manual refresh and convenience wrappers.
  */
 
-// ----- 0. Import schedules and actuals from email -----
+// ----- 0. Import schedules and actuals from email ----- 
 function importDataFromEmails() {
   try {
     var config = getGlobalConfig();
@@ -88,7 +88,7 @@ function importDataFromEmails() {
       
       // Write data, assuming CSV includes headers starting from the first row.
       sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
-      Logger.log('Imported data from label "' + config.label + '" to sheet "' + config.sheetName + '". Rows: ' + data.length + ". Email subject: " + message.getSubject());
+      Logger.log('Imported data from label "' + config.label + '" to sheet "' + config.sheetName + '". Rows: ' + data.length + '. Email subject: ' + message.getSubject());
       
       // Optional: Mark email as read or archive it
       // message.markRead();
@@ -134,7 +134,7 @@ function buildFinalSchedules(config) {
       return pats.some(function(p){return new RegExp(p,'i').test(h);});
     });
   }
-  var resourceIdx = findIndex(['Resource Name','ResourceName','Resource:\\s*Resource Name','^Resource$']);
+  var resourceIdx = findIndex(['Resource Name','ResourceName','Resource:\s*Resource Name','^Resource$']);
   if (resourceIdx === -1) resourceIdx = Math.max(0, metadataColumns - 1);
   var projectIdx = findIndex(['Project']);
   if (projectIdx === -1) throw new Error('Project column not found in ' + (config.importSchedules || 'IMPORT-FF Schedules'));
@@ -383,7 +383,7 @@ function buildAvailabilityMatrix(config) {
   if(outData.length) out.getRange(2,1,outData.length,outData[0].length).setValues(outData);
 }
 
-// ----- 3. Build final capacity table -----
+// ----- 3. Build final capacity table ----- 
 function buildFinalCapacity(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sched = ss.getSheetByName(config.finalSchedules || 'Final - Schedules');
@@ -501,12 +501,12 @@ function buildFinalCapacity(config) {
   }
 
   function availableHoursForMonth_(staffEntry, monthKey) {
-    var base = countryHoursMap[(staffEntry.countryCode || '') + '|' + monthKey];
+    var base = countryHoursMap[(staffEntry.countryCode || '')+'|'+monthKey];
     if (!base) return 0;
     var fte = staffEntry.fte || 0;
     if (!fte) return 0;
-    var monthStart = new Date(monthKey + '-01');
-    var monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    var monthStart = new Date(monthKey+'-01');
+    var monthEnd = new Date(monthStart.getFullYear(),monthStart.getMonth()+1,0);
     if (!staffEntry.startDate) {
       return base * fte;
     }
@@ -534,8 +534,13 @@ function buildFinalCapacity(config) {
   var sd2=sched.getDataRange().getValues(), sh2=sd2[0], sr2=sd2.slice(1);
   var iProj=sh2.findIndex(h=>/Project/i.test(h)), iVal=sh2.findIndex(h=>/Value|Hours/i.test(h)), iHelp=sh2.findIndex(h=>/Helper/i.test(h));
   var leave={}, schedM={};
-  sr2.forEach(r=>{var pj=r[iProj]+'', h=r[iHelp]+''; var m=h.match(/^(.+)-(\d{2})-(\d{2})$/); if(!m)return;
-    var nm=m[1], mo=m[2], yr=m[3]; var key=(yr.length===2?('20'+yr):yr)+'-'+mo; var hrs=parseFloat(r[iVal])||0;
+  sr2.forEach(r=>{
+    var pj=r[iProj]+'', h=r[iHelp]+''; 
+    var m=h.match(/^(.+)-(\d{2})-(\d{2})$/); 
+    if(!m)return;
+    var nm=m[1], mo=m[2], yr=m[3]; 
+    var key=(yr.length===2?('20'+yr):yr)+'-'+mo;
+    var hrs=parseFloat(r[iVal])||0;
     if(pj===(config.leaveProjectName||'JFGP All Leave')) leave[nm+'|'+key]=(leave[nm+'|'+key]||0)+hrs;
     else schedM[nm+'|'+key]=(schedM[nm+'|'+key]||0)+hrs;
   });
@@ -557,8 +562,7 @@ function buildFinalCapacity(config) {
   });
 
   var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity');
-  clearSheetContents_(fo);
-  var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','Sched Hrs','Billable Capacity'];
+  clearSheetContents_(fo); var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','SchedHrs','Billable Capacity'];
   fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
   Object.keys(fullMap).forEach(function(k){
     var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{};
@@ -567,7 +571,8 @@ function buildFinalCapacity(config) {
     var monthDate = new Date(m+'-01');
     var chKey = (st.countryCode||'')+'|'+m;
     var fullHours = countryHoursMap[chKey] || fullMap[k] || 0;
-    var al=leave[k]||0, net=fullHours-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
+    var al=leave[k]||0, net=fullHours-al;
+    var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
     out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,fullHours,al,nb,tbh,sch,bc]);
   });
   if(out.length){
@@ -577,7 +582,7 @@ function buildFinalCapacity(config) {
   }
 }
 
-// ----- 4. Wrapper to run full refresh -----
+// ----- 4. Wrapper to run full refresh ----- 
 function importAndFilterActiveStaff(config) {
   var sourceUrl = config.activeStaffUrl;
   if (!sourceUrl) throw new Error('Active Staff URL missing from Config sheet');
@@ -732,146 +737,6 @@ function buildEstVsActAggregate(config) {
 }
 
 /**
- * Rebuilds the "All Rows Needed Data Source" tab (or configured Variance Source Sheet)
- * without relying on Sheet QUERY, then reapplies the downstream array formulas in E:L.
- * This keeps the existing header if present; otherwise a default 12-column header is used.
- */
-function rebuildVarianceSourceSheet_(config) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var destName = config.varianceSourceSheet || 'All Rows Needed Data Source';
-  var destSheet = ss.getSheetByName(destName) || ss.insertSheet(destName);
-
-  var defaultHeader = [
-    'Resource',
-    'Project',
-    'Start Date',
-    'Date',
-    'Account',
-    'Date Adj',
-    'Capability Partner',
-    'Parent Practice',
-    'Practice',
-    'ResourceRole',
-    'Relative Month',
-    'Year - Month'
-  ];
-
-  var header = defaultHeader;
-  if (destSheet.getLastRow() >= 1 && destSheet.getLastColumn() >= 1) {
-    var existingHeader = destSheet.getRange(1, 1, 1, Math.max(destSheet.getLastColumn(), defaultHeader.length)).getValues()[0];
-    if (existingHeader.some(function(c) { return c !== null && c !== ''; })) {
-      header = existingHeader;
-    }
-  }
-
-  var estSheet = ss.getSheetByName(config.importEstVsAct || 'Est vs Act - Import');
-  var actSheet = ss.getSheetByName(config.importActuals || 'Actuals - Import');
-  var lookupsSheet = ss.getSheetByName('Lookups');
-  var activeStaffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
-  var timezone = ss.getSpreadsheetTimeZone();
-
-  // Build project->account map from Lookups col A/B
-  var accountMap = {};
-  if (lookupsSheet && lookupsSheet.getLastRow() > 1) {
-    var lData = lookupsSheet.getDataRange().getValues();
-    lData.slice(1).forEach(function(r) {
-      var proj = (r[0] + '').trim();
-      var acc = (r[1] + '').trim();
-      if (proj && acc) accountMap[proj] = acc;
-    });
-  }
-
-  // Build resource lookup maps from Active staff
-  var resourceMap = {};
-  if (activeStaffSheet && activeStaffSheet.getLastRow() > 1) {
-    var asData = activeStaffSheet.getDataRange().getValues();
-    // Mirror the original sheet formulas: key on column H, values from I, A, B, D respectively.
-    var IDX_NAME = 7;    // col H
-    var IDX_CAP = 8;     // col I
-    var IDX_PARENT = 0;  // col A
-    var IDX_PRACTICE = 1;// col B
-    var IDX_ROLE = 3;    // col D
-    asData.slice(1).forEach(function(r){
-      var resName = r.length > IDX_NAME ? (r[IDX_NAME] + '').trim() : '';
-      if (!resName) return;
-      var cap = r.length > IDX_CAP ? (r[IDX_CAP] + '').trim() : '';
-      var parent = r.length > IDX_PARENT ? (r[IDX_PARENT] + '').trim() : '';
-      var practice = r.length > IDX_PRACTICE ? (r[IDX_PRACTICE] + '').trim() : '';
-      var roleRaw = r.length > IDX_ROLE ? (r[IDX_ROLE] + '').trim() : '';
-      var role = roleRaw;
-      if (practice && roleRaw && roleRaw.toLowerCase().indexOf((practice + ' -').toLowerCase()) === 0) {
-        role = roleRaw.substring((practice + ' - ').length);
-      }
-      resourceMap[resName] = {
-        cap: cap || 'Not in lookup',
-        parent: parent || 'Not in lookup',
-        practice: practice || 'Not in lookup',
-        role: role || 'Not in lookup'
-      };
-    });
-  }
-
-  var combined = [];
-
-  if (estSheet && estSheet.getLastRow() > 1) {
-    var estValues = estSheet.getDataRange().getValues().slice(1); // skip header
-    estValues.forEach(function(r) {
-      var project = (r[0] + '').trim();  // Col A
-      var resource = (r[1] + '').trim(); // Col B
-      if (!project || !resource) return;
-      combined.push([resource, project, '', r[4]]); // Resource, Project, blank Start Date, Date (Col E)
-    });
-  }
-
-  if (actSheet && actSheet.getLastRow() > 1) {
-    var actValues = actSheet.getDataRange().getValues().slice(1); // skip header
-    actValues.forEach(function(r) {
-      var project = (r[1] + '').trim(); // Col B
-      if (!project) return;
-      combined.push([r[0], r[1], r[2], r[3]]); // Resource, Project, Start?, Date?
-    });
-  }
-
-  combined.sort(function(a, b) {
-    return (a[1] || '').localeCompare(b[1] || '');
-  });
-
-  clearSheetContents_(destSheet);
-  destSheet.getRange(1, 1, 1, header.length).setValues([header]);
-
-  if (combined.length) {
-    var configSheet = ss.getSheetByName('Config');
-    var anchorCell = configSheet ? configSheet.getRange('C7').getValue() : null;
-    var anchorDate = coerceToDate_(anchorCell, timezone);
-    var output = combined.map(function(row){
-      var res = row[0], proj = row[1], startDate = row[2], dateVal = row[3];
-      var acct = accountMap[proj] || '#N/A';
-      var dateAdj = dateVal ? coerceToDate_(dateVal, timezone) : null;
-      var resInfo = resourceMap[res] || { cap:'Not in lookup', parent:'Not in lookup', practice:'Not in lookup', role:'Not in lookup' };
-      var relMonth = (res && dateAdj && anchorDate) ? ((dateAdj.getFullYear() - anchorDate.getFullYear()) * 12 + (dateAdj.getMonth() - anchorDate.getMonth())) : '';
-      var yearMonth = dateAdj ? Utilities.formatDate(new Date(dateAdj.getFullYear(), dateAdj.getMonth() + 1, 0), timezone, 'yyyy - MM') : '';
-      return [
-        res,
-        proj,
-        startDate || '',
-        dateAdj || '',
-        acct,
-        dateAdj || '',
-        resInfo.cap,
-        resInfo.parent,
-        resInfo.practice,
-        resInfo.role,
-        relMonth,
-        yearMonth
-      ];
-    });
-    destSheet.getRange(2, 1, output.length, header.length).setValues(output);
-  }
-
-  destSheet.autoResizeColumns(1, Math.max(header.length, 12));
-}
-
-/**
  * Rebuilds the Variance tab (replacing previous sheet queries) by grouping
  * the "All Rows Needed Data Source" sheet with the same logic as:
  * SELECT L, E, B, A, G, H, I, J, sum(C) WHERE F IS NOT NULL AND K <= 0 AND K > -4 GROUP BY L, E, B, A, G, H, I, J
@@ -974,10 +839,8 @@ function buildVarianceTab(config) {
     headers[9] || 'ResourceRole',
     'Act TC',
     'Billable',
-    'Sched.',
-    'Est Act Hrs',
-    'Act.',
-    'Var',
+    'Sched.','Est ActHrs',
+    'Act.','Variance',
     'Region',
     'Country',
     'Resource Hub',
@@ -991,7 +854,7 @@ function buildVarianceTab(config) {
     if (!p) return '';
     var lower = p.toLowerCase();
     if (/opp|client admin/.test(lower)) return 'Growth';
-    if (/JFGP|JFTR/i.test(p)) return 'Internal';
+    if (/^JFGP|JFTR/i.test(p)) return 'Internal';
     return 'Billable';
   }
 
@@ -1007,10 +870,10 @@ function buildVarianceTab(config) {
 
   function parseMonthString_(str) {
     if (!str || typeof str !== 'string') return null;
-    var m = str.match(/^(\d{4})\s*-\s*(\d{2})$/);
+    var m = str.match(/^(\d{4})[-\/](\d{1,2})$/);
     if (!m) return null;
-    var year = parseInt(m[1], 10);
-    var month = parseInt(m[2], 10);
+    var year = parseInt(m[1],10);
+    var month = parseInt(m[2],10);
     if (isNaN(year) || isNaN(month)) return null;
     return { year: year, month: month };
   }
@@ -1059,6 +922,8 @@ function buildVarianceTab(config) {
   if (rows.length) {
     dest.getRange(2, 1, rows.length, outHeader.length).setValues(rows);
   }
+
+  dest.autoResizeColumns(1, Math.max(outHeader.length, 12));
 }
 
 /**
@@ -1130,9 +995,9 @@ function getSpreadsheetIdFromConfig_() {
   var fallback = active.getId();
   var configSheet = active.getSheetByName('Config');
   if (!configSheet) return fallback;
-  var raw = (configSheet.getRange('C24').getDisplayValue() + '').trim();
+  var raw = (configSheet.getRange('C2').getDisplayValue() + '').trim();
   if (!raw) return fallback;
-  var match = raw.match(/[-\w]{25,}/);
+  var match = raw.match(/[-\w]{25,}/i);
   return match ? match[0] : raw;
 }
 
@@ -1228,67 +1093,6 @@ function getGlobalConfig() {
   };
 
   return settings;
-}
-
-function ensureRoleConfigSheet_(ss) {
-  var sheet = ss.getSheetByName('Role Config');
-  if (sheet) return sheet;
-  sheet = ss.insertSheet('Role Config');
-  var headers = ['Role', 'Billable %'];
-  var rows = [
-    ['(default)', '100%'],
-    ['VP', '50%'],
-    ['Director', '70%'],
-    ['Executive', '80%'],
-    ['Manager', '80%']
-  ];
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  sheet.autoResizeColumns(1, headers.length);
-  return sheet;
-}
-
-function setupConfigTab() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
-  var lastRow = Math.max(sheet.getLastRow(), 1);
-  var existingValues = sheet.getRange(1, 2, lastRow, 1).getDisplayValues();
-  var existingKeys = {};
-  existingValues.forEach(function(row){
-    var key = (row[0] + '').trim();
-    if (key) existingKeys[key] = true;
-  });
-
-  var requiredEntries = [
-    { key: 'IMPORT-FF Schedules', sample: 'IMPORT-FF Schedules' },
-    { key: 'Est vs Act - Import', sample: 'Est vs Act - Import' },
-    { key: 'Actuals - Import', sample: 'Actuals - Import' },
-    { key: 'Active Staff URL', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE/edit' },
-    { key: 'Active Staff Source Sheet', sample: 'Staff Export' },
-    { key: 'Active Staff Practice Filter', sample: 'Earned Media (H)' },
-    { key: 'Active Staff Country Regex', sample: 'UK|United Kingdom|United States|US' },
-    { key: 'Active Staff Sheet', sample: 'Active staff' },
-    { key: 'FF Schedule Override Sheet', sample: 'FF Schedule Override' },
-    { key: 'Country Hours Sheet', sample: 'Country Hours' },
-    { key: 'Availability Matrix Sheet', sample: 'Availability Matrix' },
-    { key: 'Consolidated Schedules Sheet', sample: 'Consolidated-FF Schedules' },
-    { key: 'Final - Schedules Sheet', sample: 'Final - Schedules' },
-    { key: 'Final - Capacity Sheet', sample: 'Final - Capacity' },
-    { key: 'Est vs Act - Aggregated Sheet', sample: 'Est vs Act - Aggregated' },
-    { key: 'Variance Source Sheet', sample: 'All Rows Needed Data Source' },
-    { key: 'Variance Sheet', sample: 'Variance' },
-    { key: 'Role Config Sheet', sample: 'Role Config' },
-    { key: 'Leave Project Name', sample: 'JFGP All Leave' },
-    { key: 'Data Start Column', sample: '8' },
-    { key: 'Global Holidays', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE_HOLIDAYS/edit' }
-  ];
-
-  requiredEntries.forEach(function(entry){
-    if (!existingKeys[entry.key]) {
-      sheet.appendRow(['', entry.key, entry.sample]);
-      existingKeys[entry.key] = true;
-    }
-  });
 }
 
 function setupRoleConfigTab() {
@@ -1520,33 +1324,39 @@ function monthKeyToDate_(key) {
 
 function refreshAll() {
   var config = getGlobalConfig();
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
   // Phase 1: fast imports and prerequisites.
   importDataFromEmails(config);
   importAndFilterActiveStaff(config);
   refreshLookupsFromConfig_(config);
   SpreadsheetApp.flush();
-  buildEstVsActAggregate(config);
-  // Schedule Phase 2 to reduce risk of Apps Script 6‑minute timeouts on larger sheets.
-  scheduleRefreshAllPhase2_(ss);
+  // Schedule the first step of Phase 2 to reduce risk of timeouts.
+  scheduleNextStep_('phase2_step1_buildEstVsAct');
 }
 
-function scheduleRefreshAllPhase2_(ss) {
-  // Clean up any pending phase-2 triggers to avoid duplicates.
+function scheduleNextStep_(functionName) {
+  // Clean up any pending triggers to avoid duplicates.
   ScriptApp.getProjectTriggers().forEach(function(trig){
-    if (trig.getHandlerFunction && trig.getHandlerFunction() === 'refreshAllPhase2') {
+    if (trig.getHandlerFunction && (
+        trig.getHandlerFunction() === functionName || 
+        trig.getHandlerFunction().startsWith('phase2_') ||
+        trig.getHandlerFunction() === 'refreshAllPhase2' // Old trigger name
+      )) {
       ScriptApp.deleteTrigger(trig);
     }
   });
-  ScriptApp.newTrigger('refreshAllPhase2')
+  // Create a trigger for the next step in the chain.
+  ScriptApp.newTrigger(functionName)
     .timeBased()
-    .after(30 * 1000) // give Sheets a moment to settle
+    .after(20 * 1000) // give Sheets a moment to settle
     .create();
 }
 
 function refreshAllPhase2() {
+  // This function is now deprecated and will be broken into smaller, chained functions.
+  // It is kept here for reference during the refactor but should not be called directly.
   var config = getGlobalConfig();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  buildEstVsActAggregate(config);
   rebuildVarianceSourceSheet_(config);
   refreshCountryHoursFromRegion_(ss, config);
   buildFinalSchedules(config);
@@ -1639,4 +1449,80 @@ function getStaffFilterConfig_() {
 
 function testVariance() {
   buildVarianceTab(getGlobalConfig());
+}
+
+// ----- Chained Execution for Phase 2 ----- 
+
+function phase2_step1_buildEstVsAct() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 2, Step 1: buildEstVsActAggregate');
+    buildEstVsActAggregate(config);
+    Logger.log('Completed Step 1. Scheduling Step 2.');
+    scheduleNextStep_('phase2_step2_rebuildVarianceSource');
+  } catch (e) {
+    Logger.log('Error in step 1 (buildEstVsActAggregate): ' + e.toString());
+  }
+}
+
+function phase2_step2_rebuildVarianceSource() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 2, Step 2: rebuildVarianceSourceSheet_');
+    rebuildVarianceSourceSheet_(config);
+    Logger.log('Completed Step 2. Scheduling Step 3.');
+    scheduleNextStep_('phase2_step3_refreshCountryHours');
+  } catch (e) {
+    Logger.log('Error in step 2 (rebuildVarianceSourceSheet_): ' + e.toString());
+  }
+}
+
+function phase2_step3_refreshCountryHours() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 2, Step 3: refreshCountryHoursFromRegion_');
+    refreshCountryHoursFromRegion_(ss, config);
+    Logger.log('Completed Step 3. Scheduling Step 4.');
+    scheduleNextStep_('phase2_step4_buildFinalSchedules');
+  } catch (e) {
+    Logger.log('Error in step 3 (refreshCountryHoursFromRegion_): ' + e.toString());
+  }
+}
+
+function phase2_step4_buildFinalSchedules() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 2, Step 4: buildFinalSchedules');
+    buildFinalSchedules(config);
+    Logger.log('Completed Step 4. Scheduling Step 5.');
+    scheduleNextStep_('phase2_step5_buildFinalCapacity');
+  } catch (e) {
+    Logger.log('Error in step 4 (buildFinalSchedules): ' + e.toString());
+  }
+}
+
+function phase2_step5_buildFinalCapacity() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 2, Step 5: buildFinalCapacity');
+    buildFinalCapacity(config);
+    Logger.log('Completed Step 5. Scheduling Step 6.');
+    scheduleNextStep_('phase2_step6_buildVarianceTab');
+  } catch (e) {
+    Logger.log('Error in step 5 (buildFinalCapacity): ' + e.toString());
+  }
+}
+
+function phase2_step6_buildVarianceTab() {
+  try {
+    var config = getGlobalConfig();
+    Logger.log('Starting Phase 2, Step 6: buildVarianceTab');
+    buildVarianceTab(config);
+    Logger.log('Phase 2 complete. All steps finished.');
+    // This is the last step, so we delete any remaining triggers for this chain. 
+    scheduleNextStep_(null); 
+  } catch (e) {
+    Logger.log('Error in step 6 (buildVarianceTab): ' + e.toString());
+  }
 }
