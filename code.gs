@@ -14,9 +14,12 @@ function importDataFromEmails() {
     if (configSheet) {
       var startRow = 10;
       var lastRow = configSheet.getLastRow();
+      Logger.log('Debug: "Config" sheet found. Last row is: ' + lastRow + '. Required start row is: ' + startRow);
+
       if (lastRow >= startRow) {
         var configData = configSheet.getRange(startRow, 2, lastRow - startRow + 1, 4).getValues();
-        configData.forEach(function(row) {
+        configData.forEach(function(row, index) {
+          Logger.log('Debug: Processing row ' + (startRow + index) + '. Value in column B is: "' + row[0] + '"');
           if ((row[0] + '').trim() !== 'Email Import') return;
           var label = (row[1] + '').trim();
           var sheetName = (row[2] + '').trim();
