@@ -1344,7 +1344,9 @@ function getGlobalConfig() {
     regionCalendarId: calendarMatch ? calendarMatch[0] : (rawCalendarLink || ''),
     regionsInScope: regionsList,
     lookupsImportUrl: lookupsImportUrl,
-    lookupsImportSheetName: findValue('Lookups Import Sheet Name') || 'Import'
+    lookupsImportSheetName: findValue('Lookups Import Sheet Name') || 'Import',
+    accountExecSponsorUrl: findValue('Account and Exec Sponsor'),
+    accountExecSponsorTab: findValue('Account and Exec Sponsor - Tab')
   };
 
   return settings;
@@ -1402,7 +1404,9 @@ function setupConfigTab() {
     { key: 'Data Start Column', sample: '8' },
     { key: 'Data Start Column', sample: '8' },
     { key: 'Global Holidays', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE_HOLIDAYS/edit' },
-    { key: 'Lookups Import Sheet Name', sample: 'Import' }
+    { key: 'Lookups Import Sheet Name', sample: 'Import' },
+    { key: 'Account and Exec Sponsor', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE/edit' },
+    { key: 'Account and Exec Sponsor - Tab', sample: 'Processing' }
   ];
 
   requiredEntries.forEach(function (entry) {
@@ -1692,6 +1696,7 @@ function onOpen() {
     var ui = SpreadsheetApp.getUi();
     ui.createMenu('Earned Media Resourcing')
       .addItem('Refresh All', 'refreshAll')
+      .addItem('Refresh Account Hub Leads', 'refreshAccountHubLeads')
       .addItem('Run Setup', 'runSetup')
       .addToUi();
   } catch (err) {
@@ -1876,4 +1881,112 @@ function phase2_step6_buildVarianceTab() {
   } catch (e) {
     Logger.log('Error in step 6 (buildVarianceTab): ' + e.toString());
   }
+}
+
+function refreshAccountHubLeads() {
+  try {
+    var config = getGlobalConfig();
+    buildAccountHubLeadTab(config);
+    Browser.msgBox('Success', 'Account Hub Lead tab updated.', Browser.Buttons.OK);
+  } catch (e) {
+    Browser.msgBox('Error', e.toString(), Browser.Buttons.OK);
+  }
+}
+
+function buildAccountHubLeadTab(config) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var targetSheetName = 'Account Hub Lead';
+  var targetSheet = ss.getSheetByName(targetSheetName);
+
+  // 1. Read existing Hub Leads for persistence
+  var existingHubLeads = {};
+  if (targetSheet && targetSheet.getLastRow() > 1) {
+    var data = targetSheet.getDataRange().getValues();
+    var headers = data[0];
+    var accIdx = headers.indexOf('Account');
+    var hubLeadIdx = headers.indexOf('Hub Lead');
+    if (accIdx > -1 && hubLeadIdx > -1) {
+      for (var i = 1; i < data.length; i++) {
+        var acc = (data[i][accIdx] + '').trim();
+        var lead = (data[i][hubLeadIdx] + '').trim();
+        if (acc && lead) {
+          existingHubLeads[acc] = lead;
+        }
+      }
+    }
+  }
+
+  // 2. Get Unique Accounts from Final - Schedules
+  var schedSheet = ss.getSheetByName(config.finalSchedules || 'Final - Schedules');
+  if (!schedSheet) throw new Error('Final - Schedules sheet not found. Please run "Refresh All" first.');
+  var schedData = schedSheet.getDataRange().getValues();
+  if (schedData.length < 2) return; // No data
+  var schedHeaders = schedData[0];
+  var schedAccIdx = schedHeaders.indexOf('Account');
+  if (schedAccIdx === -1) throw new Error('Account column not found in Final - Schedules');
+
+  var uniqueAccounts = {};
+  for (var i = 1; i < schedData.length; i++) {
+    var acc = (schedData[i][schedAccIdx] + '').trim();
+    if (acc) uniqueAccounts[acc] = true;
+  }
+  var accountList = Object.keys(uniqueAccounts).sort();
+
+  // 3. Get Exec Sponsor and Region from external sheet
+  var sponsorMap = {}; // Account -> {sponsor, region}
+  var extUrl = config.accountExecSponsorUrl;
+  var extTab = config.accountExecSponsorTab;
+
+  if (extUrl && extTab) {
+    try {
+      var extSs = openSpreadsheetByUrlOrId_(extUrl);
+      var extSheet = extSs.getSheetByName(extTab);
+      if (extSheet) {
+        var extData = extSheet.getDataRange().getValues();
+        if (extData.length > 0) {
+          var extHeaders = extData[0];
+          var eAccIdx = extHeaders.findIndex(function (h) { return /Accounts?/i.test(h); });
+          var eSponIdx = extHeaders.findIndex(function (h) { return /Sponsor/i.test(h); });
+          var eMarkIdx = extHeaders.findIndex(function (h) { return /Market/i.test(h); });
+
+          // Fallback to screenshot positions if headers not found or ambiguous
+          if (eAccIdx === -1) eAccIdx = 6; // G
+          if (eSponIdx === -1) eSponIdx = 9; // J
+          if (eMarkIdx === -1) eMarkIdx = 10; // K
+
+          for (var i = 1; i < extData.length; i++) {
+            var row = extData[i];
+            if (!row) continue;
+            var acc = (row[eAccIdx] + '').trim();
+            if (!acc) continue;
+            sponsorMap[acc] = {
+              sponsor: (row[eSponIdx] + '').trim(),
+              region: (row[eMarkIdx] + '').trim()
+            };
+          }
+        }
+      }
+    } catch (e) {
+      Logger.log('Error reading Account Exec Sponsor sheet: ' + e.toString());
+    }
+  }
+
+  // 4. Build Output
+  var output = [];
+  accountList.forEach(function (acc) {
+    var info = sponsorMap[acc] || { sponsor: '', region: '' };
+    var hubLead = existingHubLeads[acc] || '';
+    output.push([acc, info.sponsor, info.region, hubLead]);
+  });
+
+  // 5. Write to Sheet
+  if (!targetSheet) targetSheet = ss.insertSheet(targetSheetName);
+  else targetSheet.clear();
+
+  var outHeaders = ['Account', 'Exec Sponsor', 'Region', 'Hub Lead'];
+  targetSheet.getRange(1, 1, 1, outHeaders.length).setValues([outHeaders]).setFontWeight('bold');
+  if (output.length) {
+    targetSheet.getRange(2, 1, output.length, outHeaders.length).setValues(output);
+  }
+  targetSheet.autoResizeColumns(1, outHeaders.length);
 }
