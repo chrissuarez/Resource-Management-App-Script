@@ -1945,7 +1945,11 @@ function buildAccountHubLeadTab(config) {
         var extData = extSheet.getDataRange().getValues();
         if (extData.length > 0) {
           var extHeaders = extData[0];
-          var eAccIdx = extHeaders.findIndex(function (h) { return /Accounts?/i.test(h); });
+          var eAccIdx = extHeaders.indexOf('Accounts');
+          if (eAccIdx === -1) eAccIdx = extHeaders.findIndex(function (h) { return /Accounts/i.test(h); });
+          if (eAccIdx === -1) eAccIdx = extHeaders.indexOf('Account');
+          if (eAccIdx === -1) eAccIdx = extHeaders.findIndex(function (h) { return /Accounts?/i.test(h); });
+
           var eSponIdx = extHeaders.findIndex(function (h) { return /Sponsor/i.test(h); });
           var eMarkIdx = extHeaders.findIndex(function (h) { return /Market/i.test(h); });
 
@@ -1959,7 +1963,7 @@ function buildAccountHubLeadTab(config) {
             if (!row) continue;
             var acc = (row[eAccIdx] + '').trim();
             if (!acc) continue;
-            sponsorMap[acc] = {
+            sponsorMap[acc.toLowerCase()] = {
               sponsor: (row[eSponIdx] + '').trim(),
               region: (row[eMarkIdx] + '').trim()
             };
@@ -1974,7 +1978,7 @@ function buildAccountHubLeadTab(config) {
   // 4. Build Output
   var output = [];
   accountList.forEach(function (acc) {
-    var info = sponsorMap[acc] || { sponsor: '', region: '' };
+    var info = sponsorMap[acc.toLowerCase()] || { sponsor: '', region: '' };
     var hubLead = existingHubLeads[acc] || '';
     output.push([acc, info.sponsor, info.region, hubLead]);
   });
