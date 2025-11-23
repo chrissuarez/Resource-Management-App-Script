@@ -18,7 +18,7 @@ function importDataFromEmails() {
 
       if (lastRow >= startRow) {
         var configData = configSheet.getRange(startRow, 2, lastRow - startRow + 1, 4).getValues();
-        configData.forEach(function(row, index) {
+        configData.forEach(function (row, index) {
           Logger.log('Debug: Processing row ' + (startRow + index) + '. Value in column B is: "' + row[0] + '"');
           if ((row[0] + '').trim() !== 'Email Import') return;
           var label = (row[1] + '').trim();
@@ -35,18 +35,18 @@ function importDataFromEmails() {
       return;
     }
 
-    emailConfigs.forEach(function(config) {
+    emailConfigs.forEach(function (config) {
       Logger.log('Processing label: ' + config.label + ' for sheet: ' + config.sheetName);
-      
+
       // Search for emails with the label. GmailApp.search returns threads sorted newest first. 
-      var threads = GmailApp.search('label:' + config.label); 
-      
+      var threads = GmailApp.search('label:' + config.label);
+
       if (!threads.length) {
         Logger.log('No threads found for ' + config.label);
         return; // continue to next config in the forEach loop
       }
-      
-      var message = threads[0].getMessages()[0]; 
+
+      var message = threads[0].getMessages()[0];
       var attachments = message.getAttachments();
       var csvAttachment = attachments.find(att => att.getContentType() === 'text/csv' || att.getContentType() === 'application/csv');
 
@@ -54,7 +54,7 @@ function importDataFromEmails() {
         Logger.log('No CSV attachment found in the latest email for ' + config.label + '. Email subject: ' + message.getSubject());
         return; // continue to next config
       }
-      
+
       var charEncoding = config.encoding || 'UTF-8';
       var csvDataString = csvAttachment.getDataAsString(charEncoding);
       var data = Utilities.parseCsv(csvDataString);
@@ -72,11 +72,11 @@ function importDataFromEmails() {
         Logger.log('Clearing existing content from sheet: ' + config.sheetName);
         clearSheetContents_(sheet);
       }
-      
+
       sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
       Logger.log('Imported data from label "' + config.label + '" to sheet "' + config.sheetName + '". Rows: ' + data.length + '. Email subject: ' + message.getSubject());
     });
-  } catch(e) {
+  } catch (e) {
     Logger.log('Import error: ' + e.toString() + ' Stack: ' + e.stack);
   }
 }
@@ -104,21 +104,21 @@ function buildFinalSchedules(config) {
   }
 
   function normalizeHeaderValue(h) {
-    return (h === null || typeof h === 'undefined') ? '' : (h + '').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim().toLowerCase();
+    return (h === null || typeof h === 'undefined') ? '' : (h + '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
   }
   var normalizedHeaders = headers.map(normalizeHeaderValue);
   function findIndex(pats) {
-    return normalizedHeaders.findIndex(function(h){
-      return pats.some(function(p){return new RegExp(p,'i').test(h);});
+    return normalizedHeaders.findIndex(function (h) {
+      return pats.some(function (p) { return new RegExp(p, 'i').test(h); });
     });
   }
-  var resourceIdx = findIndex(['Resource Name','ResourceName','Resource:\s*Resource Name','^Resource$']);
+  var resourceIdx = findIndex(['Resource Name', 'ResourceName', 'Resource:\s*Resource Name', '^Resource$']);
   if (resourceIdx === -1) resourceIdx = Math.max(0, metadataColumns - 1);
   var projectIdx = findIndex(['Project']);
   if (projectIdx === -1) throw new Error('Project column not found in ' + (config.importSchedules || 'IMPORT-FF Schedules'));
-  var accountIdx = findIndex(['Account','Client']);
-  var hoursIdx = findIndex(['Estimated Hours','Est Hours','Hours','Value','Estimated-Hours']);
-  var dateIdx = findIndex(['End Date','Date','End-Date']);
+  var accountIdx = findIndex(['Account', 'Client']);
+  var hoursIdx = findIndex(['Estimated Hours', 'Est Hours', 'Hours', 'Value', 'Estimated-Hours']);
+  var dateIdx = findIndex(['End Date', 'Date', 'End-Date']);
   if (hoursIdx === -1 && headers.length === 4) hoursIdx = 2;
   if (dateIdx === -1 && headers.length === 4) dateIdx = 3;
   var isLongForm = hoursIdx > -1 && dateIdx > -1 && rows.length;
@@ -134,12 +134,12 @@ function buildFinalSchedules(config) {
   if (staffSheet && staffSheet.getLastRow() > 1) {
     var staffData = staffSheet.getDataRange().getValues();
     var sh = staffData[0], sr = staffData.slice(1);
-    function sFind(pats){return sh.findIndex(function(h){return pats.some(function(p){return new RegExp(p,'i').test(h);});});}
-    var sName = sFind(['ResourceName','Resource Name']);
-    var sRole = sFind(['ResourceRole','Resource Role']);
-    var sCountry = sFind(['Resource Country','Resource Location','Location']);
-    var sHub = sFind(['Hub','Resource Hub']);
-    sr.forEach(function(r){
+    function sFind(pats) { return sh.findIndex(function (h) { return pats.some(function (p) { return new RegExp(p, 'i').test(h); }); }); }
+    var sName = sFind(['ResourceName', 'Resource Name']);
+    var sRole = sFind(['ResourceRole', 'Resource Role']);
+    var sCountry = sFind(['Resource Country', 'Resource Location', 'Location']);
+    var sHub = sFind(['Hub', 'Resource Hub']);
+    sr.forEach(function (r) {
       var name = sName > -1 ? (r[sName] + '').trim() : '';
       if (!name) return;
       var roleRaw = sRole > -1 ? (r[sRole] + '').trim() : '';
@@ -160,7 +160,7 @@ function buildFinalSchedules(config) {
   var hubLookup = {};
   if (lookupSheet && lookupSheet.getLastRow() > 1) {
     var lookupData = lookupSheet.getDataRange().getValues();
-    lookupData.slice(1).forEach(function(row){
+    lookupData.slice(1).forEach(function (row) {
       var projectVal = (row[0] + '').trim();
       var accountVal = (row[1] + '').trim();
       var resVal = (row[6] + '').trim();
@@ -177,11 +177,11 @@ function buildFinalSchedules(config) {
     var overrideData = overrideSheet.getDataRange().getValues();
     var oHeaders = overrideData[0];
     var oRows = overrideData.slice(1);
-    var oResIdx = oHeaders.findIndex(function(h){return /Resource/i.test(h);});
-    var oProjIdx = oHeaders.findIndex(function(h){return /Project/i.test(h);});
-    var oAccIdx = oHeaders.findIndex(function(h){return /Account/i.test(h);});
+    var oResIdx = oHeaders.findIndex(function (h) { return /Resource/i.test(h); });
+    var oProjIdx = oHeaders.findIndex(function (h) { return /Project/i.test(h); });
+    var oAccIdx = oHeaders.findIndex(function (h) { return /Account/i.test(h); });
     var startMonthCol = 3;
-    for (var iRow = 0; i < oRows.length; iRow++) {
+    for (var iRow = 0; iRow < oRows.length; iRow++) {
       var row = oRows[iRow];
       var oRes = oResIdx > -1 ? (row[oResIdx] + '').trim() : '';
       var oProj = oProjIdx > -1 ? (row[oProjIdx] + '').trim() : '';
@@ -206,13 +206,13 @@ function buildFinalSchedules(config) {
     if (typeof value === 'string') {
       if (/^[A-Za-z]{3}-\d{2}$/.test(value)) {
         var parts = value.split('-');
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         var idx = months.indexOf(parts[0]);
         if (idx > -1) return new Date(2000 + parseInt(parts[1], 10), idx, 1);
       }
       var match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (match) {
-        return new Date(parseInt(match[3],10), parseInt(match[2],10) - 1, parseInt(match[1],10));
+        return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
       }
       var parsed = new Date(value);
       if (!isNaN(parsed)) return parsed;
@@ -223,7 +223,7 @@ function buildFinalSchedules(config) {
   var outRows = [];
   var officialKeys = {};
   if (isLongForm) {
-    rows.forEach(function(row){
+    rows.forEach(function (row) {
       var hours = row[hoursIdx];
       if (hours === '' || hours === null || typeof hours === 'undefined') return;
       var dt = coerceToDate_(row[dateIdx], timezone);
@@ -248,7 +248,7 @@ function buildFinalSchedules(config) {
       officialKeys[overrideKey] = true;
     });
   } else {
-    rows.forEach(function(row){
+    rows.forEach(function (row) {
       for (var j = dataStartIdx; j < row.length; j++) {
         var hours = row[j];
         if (hours === '' || hours === null || typeof hours === 'undefined') continue;
@@ -278,7 +278,7 @@ function buildFinalSchedules(config) {
     });
   }
 
-  Object.keys(overrideMap).forEach(function(key){
+  Object.keys(overrideMap).forEach(function (key) {
     if (officialKeys[key]) return;
     var parts = key.split('|');
     var resourceName = parts[0], projectName = parts[1], monthKey = parts[2];
@@ -299,9 +299,9 @@ function buildFinalSchedules(config) {
 
   var finalSheet = ss.getSheetByName(config.finalSchedules || 'Final - Schedules') || ss.insertSheet(config.finalSchedules || 'Final - Schedules');
   clearSheetContents_(finalSheet);
-  var staffHeaders = Object.keys(staffMap).length ? ['Resource Role','Practice','Resource Location','Resource Hub'] : [];
+  var staffHeaders = Object.keys(staffMap).length ? ['Resource Role', 'Practice', 'Resource Location', 'Resource Hub'] : [];
   var accountHeader = accountIdx > -1 ? headers[accountIdx] : 'Account';
-  var headerRow = staffHeaders.concat([accountHeader, headers[projectIdx] || 'Project', headers[resourceIdx] || 'Resource Name','Date','Value','Helper']);
+  var headerRow = staffHeaders.concat([accountHeader, headers[projectIdx] || 'Project', headers[resourceIdx] || 'Resource Name', 'Date', 'Value', 'Helper']);
   finalSheet.getRange(1, 1, 1, headerRow.length).setValues([headerRow]);
   if (outRows.length) {
     finalSheet.getRange(2, 1, outRows.length, outRows[0].length).setValues(outRows);
@@ -318,43 +318,43 @@ function buildAvailabilityMatrix(config) {
   if (!staffSheet || !hoursSheet) throw new Error('Missing staff or hours sheet');
 
   var sd = staffSheet.getDataRange().getValues(), hdr = sd[0], rows = sd.slice(1);
-  function find(pats){return hdr.findIndex(h=>pats.some(p=>new RegExp(p,'i').test(h)));}
-  var iName = find(['ResourceName','Resource Name']), iCountry = find(['Resource Country']), iStart = find(['Start Date']), iFTE = find(['FTE']);
+  function find(pats) { return hdr.findIndex(h => pats.some(p => new RegExp(p, 'i').test(h))); }
+  var iName = find(['ResourceName', 'Resource Name']), iCountry = find(['Resource Country']), iStart = find(['Start Date']), iFTE = find(['FTE']);
 
   var hd = hoursSheet.getDataRange().getValues().slice(1), hmap = {};
-  hd.forEach(function(r){
+  hd.forEach(function (r) {
     var ct = normalizeCountryCode_(r[0]);
     if (!ct) return;
     var dt = r[1], hrs = parseFloat(r[2]) || 0;
     var d = dt instanceof Date ? dt : parseMonthYearValue_(dt);
     var key = Utilities.formatDate(d, ss.getSpreadsheetTimeZone(), 'yyyy-MM');
-    hmap[ct+'|'+key] = hrs;
+    hmap[ct + '|' + key] = hrs;
   });
-  var months = Object.keys(hmap).map(k=>k.split('|')[1]).filter((v,i,a)=>a.indexOf(v)===i).sort();
+  var months = Object.keys(hmap).map(k => k.split('|')[1]).filter((v, i, a) => a.indexOf(v) === i).sort();
 
-  var out = ss.getSheetByName(config.availabilityMatrix || 'Availability Matrix')||ss.insertSheet(config.availabilityMatrix || 'Availability Matrix');
-  clearSheetContents_(out); out.getRange(1,1).setValue('ResourceName');
-  months.forEach(function(m,i){var d=new Date(m+'-01');out.getRange(1,i+2).setValue(d).setNumberFormat('MMM-yy');});
+  var out = ss.getSheetByName(config.availabilityMatrix || 'Availability Matrix') || ss.insertSheet(config.availabilityMatrix || 'Availability Matrix');
+  clearSheetContents_(out); out.getRange(1, 1).setValue('ResourceName');
+  months.forEach(function (m, i) { var d = new Date(m + '-01'); out.getRange(1, i + 2).setValue(d).setNumberFormat('MMM-yy'); });
 
-  function cw(s,e){var c=0;for(var d=new Date(s);d<=e;d.setDate(d.getDate()+1)){if(d.getDay()>0&&d.getDay()<6)c++;}return c;}
-  var outData=[];
-  rows.forEach(function(r){
-    var name=r[iName]+''; if(!name)return;
-    var ctCode=normalizeCountryCode_(r[iCountry]);
-    var st=r[iStart]?new Date(r[iStart]):null;
-    var f=parseFloat(r[iFTE])||0;
-    var row=[name];
-    months.forEach(function(m){
-      var ms=new Date(m+'-01'), me=new Date(ms.getFullYear(),ms.getMonth()+1,0);
-      var key=Utilities.formatDate(ms,ss.getSpreadsheetTimeZone(),'yyyy-MM');
-      var wh=ctCode? (hmap[ctCode+'|'+key]||0):0;
-      var tot=cw(ms,me);
-      var av=!st?tot:(st>me?0:(st<=ms?tot:cw(st,me)));
-      row.push(av? (f*wh)*(av/tot): '');
+  function cw(s, e) { var c = 0; for (var d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) { if (d.getDay() > 0 && d.getDay() < 6) c++; } return c; }
+  var outData = [];
+  rows.forEach(function (r) {
+    var name = r[iName] + ''; if (!name) return;
+    var ctCode = normalizeCountryCode_(r[iCountry]);
+    var st = r[iStart] ? new Date(r[iStart]) : null;
+    var f = parseFloat(r[iFTE]) || 0;
+    var row = [name];
+    months.forEach(function (m) {
+      var ms = new Date(m + '-01'), me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
+      var key = Utilities.formatDate(ms, ss.getSpreadsheetTimeZone(), 'yyyy-MM');
+      var wh = ctCode ? (hmap[ctCode + '|' + key] || 0) : 0;
+      var tot = cw(ms, me);
+      var av = !st ? tot : (st > me ? 0 : (st <= ms ? tot : cw(st, me)));
+      row.push(av ? (f * wh) * (av / tot) : '');
     });
     outData.push(row);
   });
-  if(outData.length) out.getRange(2,1,outData.length,outData[0].length).setValues(outData);
+  if (outData.length) out.getRange(2, 1, outData.length, outData[0].length).setValues(outData);
 }
 
 // ----- 3. Build final capacity table -----
@@ -363,7 +363,7 @@ function buildFinalCapacity(config) {
   var sched = ss.getSheetByName(config.finalSchedules || 'Final - Schedules');
   var staff = ss.getSheetByName(config.staffSheet || 'Active staff');
   var chSheet = ss.getSheetByName(config.countryHours || 'Country Hours');
-  if(!sched||!staff||!chSheet) throw new Error('Missing capacity prerequisite sheets (Final - Schedules, Active staff, or Country Hours)');
+  if (!sched || !staff || !chSheet) throw new Error('Missing capacity prerequisite sheets (Final - Schedules, Active staff, or Country Hours)');
 
   var roleSheet = ss.getSheetByName(config.roleConfigSheet || 'Role Config') || ensureRoleConfigSheet_(ss);
   function parseBillableValue_(value) {
@@ -389,7 +389,7 @@ function buildFinalCapacity(config) {
     var lastRoleRow = roleSheet.getLastRow();
     if (lastRoleRow >= 2) {
       var roleValues = roleSheet.getRange(2, 1, lastRoleRow - 1, 2).getValues();
-      roleValues.forEach(function(row) {
+      roleValues.forEach(function (row) {
         var roleName = (row[0] + '').trim();
         if (!roleName) return;
         var value = parseBillableValue_(row[1]);
@@ -410,37 +410,37 @@ function buildFinalCapacity(config) {
     var lookupData = lookupSheet.getDataRange().getValues();
     var lHeaders = lookupData[0];
     var lRows = lookupData.slice(1);
-    var lResIdx = lHeaders.findIndex(function(h){return /Resource/i.test(h);});
-    var lHubIdx = lHeaders.findIndex(function(h){return /Hub/i.test(h);});
-    lRows.forEach(function(row){
+    var lResIdx = lHeaders.findIndex(function (h) { return /Resource/i.test(h); });
+    var lHubIdx = lHeaders.findIndex(function (h) { return /Hub/i.test(h); });
+    lRows.forEach(function (row) {
       var res = lResIdx > -1 ? (row[lResIdx] + '').trim() : '';
       var hub = lHubIdx > -1 ? (row[lHubIdx] + '').trim() : '';
       if (res && hub) hubLookup[res] = hub;
     });
   }
 
-  var sd = staff.getDataRange().getValues(), sh=sd[0], sr=sd.slice(1);
-  function fi(p){return sh.findIndex(h=>p.some(x=>new RegExp(x,'i').test(h)));}
-  var iRes = fi(['ResourceName']), iRR=fi(['ResourceRole']), iHub=fi(['Hub']), iC=fi(['Resource Country']), iStart=fi(['Start Date']), iFte=fi(['FTE']);
-  var staffMap={};
-  sr.forEach(function(r){
-    var n=r[iRes]+''; if(!n) return;
-    var pr=r[iRR]+''; var ps=pr.split('-');
-    var countryOriginal=r[iC]+'';
-    var countryCode=normalizeCountryCode_(countryOriginal);
+  var sd = staff.getDataRange().getValues(), sh = sd[0], sr = sd.slice(1);
+  function fi(p) { return sh.findIndex(h => p.some(x => new RegExp(x, 'i').test(h))); }
+  var iRes = fi(['ResourceName']), iRR = fi(['ResourceRole']), iHub = fi(['Hub']), iC = fi(['Resource Country']), iStart = fi(['Start Date']), iFte = fi(['FTE']);
+  var staffMap = {};
+  sr.forEach(function (r) {
+    var n = r[iRes] + ''; if (!n) return;
+    var pr = r[iRR] + ''; var ps = pr.split('-');
+    var countryOriginal = r[iC] + '';
+    var countryCode = normalizeCountryCode_(countryOriginal);
     var startDate = iStart > -1 && r[iStart] ? new Date(r[iStart]) : null;
     var fte = iFte > -1 ? parseFloat(r[iFte]) || 0 : 0;
     var hubValue = iHub > -1 ? (r[iHub] + '').trim() : '';
     if (!hubValue && hubLookup[n]) hubValue = hubLookup[n];
-    staffMap[n]={
-      hub:hubValue,
-      practice:ps[0].trim(),
-      role:ps[1]?ps.slice(1).join('-').trim():'',
-      countryOriginal:countryOriginal,
-      countryCode:countryCode,
-      country:formatCountryDisplay_(countryOriginal,countryCode),
-      startDate:startDate,
-      fte:fte
+    staffMap[n] = {
+      hub: hubValue,
+      practice: ps[0].trim(),
+      role: ps[1] ? ps.slice(1).join('-').trim() : '',
+      countryOriginal: countryOriginal,
+      countryCode: countryCode,
+      country: formatCountryDisplay_(countryOriginal, countryCode),
+      startDate: startDate,
+      fte: fte
     };
   });
 
@@ -448,14 +448,14 @@ function buildFinalCapacity(config) {
   var monthSet = {};
   if (chSheet && chSheet.getLastRow() > 1) {
     var chData = chSheet.getDataRange().getValues().slice(1);
-    chData.forEach(function(r){
+    chData.forEach(function (r) {
       var cCode = normalizeCountryCode_(r[0]);
       var mVal = r[1];
       var hrs = parseFloat(r[2]) || 0;
       var mDate = mVal instanceof Date ? mVal : coerceToDate_(mVal, ss.getSpreadsheetTimeZone());
       if (!cCode || !mDate) return;
       var mKey = Utilities.formatDate(new Date(mDate.getFullYear(), mDate.getMonth(), 1), ss.getSpreadsheetTimeZone(), 'yyyy-MM');
-      countryHoursMap[cCode+'|'+mKey] = hrs;
+      countryHoursMap[cCode + '|' + mKey] = hrs;
       monthSet[mKey] = true;
     });
   }
@@ -492,9 +492,9 @@ function buildFinalCapacity(config) {
   }
 
   var fullMap = {};
-  Object.keys(staffMap).forEach(function(name){
+  Object.keys(staffMap).forEach(function (name) {
     var staffEntry = staffMap[name];
-    Object.keys(monthSet).forEach(function(monthKey){
+    Object.keys(monthSet).forEach(function (monthKey) {
       var hours = availableHoursForMonth_(staffEntry, monthKey);
       if (hours) {
         fullMap[name + '|' + monthKey] = hours;
@@ -502,13 +502,14 @@ function buildFinalCapacity(config) {
     });
   });
 
-  var sd2=sched.getDataRange().getValues(), sh2=sd2[0], sr2=sd2.slice(1);
-  var iProj=sh2.findIndex(h=>/Project/i.test(h)), iVal=sh2.findIndex(h=>/Value|Hours/i.test(h)), iHelp=sh2.findIndex(h=>/Helper/i.test(h));
-  var leave={}, schedM={};
-  sr2.forEach(r=>{var pj=r[iProj]+'', h=r[iHelp]+''; var m=h.match(/^(.+)-(\d{2})-(\d{2})$/); if(!m)return;
-    var nm=m[1], mo=m[2], yr=m[3]; var key=(yr.length===2?('20'+yr):yr)+'-'+mo; var hrs=parseFloat(r[iVal])||0;
-    if(pj===(config.leaveProjectName||'JFGP All Leave')) leave[nm+'|'+key]=(leave[nm+'|'+key]||0)+hrs;
-    else schedM[nm+'|'+key]=(schedM[nm+'|'+key]||0)+hrs;
+  var sd2 = sched.getDataRange().getValues(), sh2 = sd2[0], sr2 = sd2.slice(1);
+  var iProj = sh2.findIndex(h => /Project/i.test(h)), iVal = sh2.findIndex(h => /Value|Hours/i.test(h)), iHelp = sh2.findIndex(h => /Helper/i.test(h));
+  var leave = {}, schedM = {};
+  sr2.forEach(r => {
+    var pj = r[iProj] + '', h = r[iHelp] + ''; var m = h.match(/^(.+)-(\d{2})-(\d{2})$/); if (!m) return;
+    var nm = m[1], mo = m[2], yr = m[3]; var key = (yr.length === 2 ? ('20' + yr) : yr) + '-' + mo; var hrs = parseFloat(r[iVal]) || 0;
+    if (pj === (config.leaveProjectName || 'JFGP All Leave')) leave[nm + '|' + key] = (leave[nm + '|' + key] || 0) + hrs;
+    else schedM[nm + '|' + key] = (schedM[nm + '|' + key] || 0) + hrs;
   });
 
   function ensureFullMapKey(resourceName, monthKey) {
@@ -518,33 +519,33 @@ function buildFinalCapacity(config) {
     var hours = availableHoursForMonth_(staffMap[resourceName], monthKey);
     fullMap[composite] = hours || 0;
   }
-  Object.keys(leave).forEach(function(key){
+  Object.keys(leave).forEach(function (key) {
     var parts = key.split('|');
     ensureFullMapKey(parts[0], parts[1]);
   });
-  Object.keys(schedM).forEach(function(key){
+  Object.keys(schedM).forEach(function (key) {
     var parts = key.split('|');
     ensureFullMapKey(parts[0], parts[1]);
   });
 
-  var fo=ss.getSheetByName(config.finalCapacity || 'Final - Capacity')||ss.insertSheet(config.finalCapacity || 'Final - Capacity');
+  var fo = ss.getSheetByName(config.finalCapacity || 'Final - Capacity') || ss.insertSheet(config.finalCapacity || 'Final - Capacity');
   clearSheetContents_(fo);
-  var hdr=['Resource Name','Hub','Role','Country','Bill %','Practice','Month-Year','Full Hours','Annual Leave','NB Hours','TBH','SchedHrs','Billable Capacity'];
-  fo.getRange(1,1,1,hdr.length).setValues([hdr]); var out=[];
-  Object.keys(fullMap).forEach(function(k){
-    var p=k.split('|'),n=p[0],m=p[1],st=staffMap[n]||{};
-    var resourceRole=(st.role||'').toLowerCase();
-    var bill=billableMap.hasOwnProperty(resourceRole)?billableMap[resourceRole]:defaultBillable;
-    var monthDate = new Date(m+'-01');
-    var chKey = (st.countryCode||'')+'|'+m;
+  var hdr = ['Resource Name', 'Hub', 'Role', 'Country', 'Bill %', 'Practice', 'Month-Year', 'Full Hours', 'Annual Leave', 'NB Hours', 'TBH', 'SchedHrs', 'Billable Capacity'];
+  fo.getRange(1, 1, 1, hdr.length).setValues([hdr]); var out = [];
+  Object.keys(fullMap).forEach(function (k) {
+    var p = k.split('|'), n = p[0], m = p[1], st = staffMap[n] || {};
+    var resourceRole = (st.role || '').toLowerCase();
+    var bill = billableMap.hasOwnProperty(resourceRole) ? billableMap[resourceRole] : defaultBillable;
+    var monthDate = new Date(m + '-01');
+    var chKey = (st.countryCode || '') + '|' + m;
     var fullHours = countryHoursMap[chKey] || fullMap[k] || 0;
-    var al=leave[k]||0, net=fullHours-al; var tbh=net*bill, nb=net*(1-bill), sch=schedM[k]||0, bc=tbh-sch;
-    out.push([n,st.hub,st.role,st.country,bill,st.practice,monthDate,fullHours,al,nb,tbh,sch,bc]);
+    var al = leave[k] || 0, net = fullHours - al; var tbh = net * bill, nb = net * (1 - bill), sch = schedM[k] || 0, bc = tbh - sch;
+    out.push([n, st.hub, st.role, st.country, bill, st.practice, monthDate, fullHours, al, nb, tbh, sch, bc]);
   });
-  if(out.length){
-    fo.getRange(2,1,out.length,out[0].length).setValues(out);
-    fo.getRange(2,5,out.length,1).setNumberFormat('0%');
-    fo.getRange(2,7,out.length,1).setNumberFormat('mmm-yy');
+  if (out.length) {
+    fo.getRange(2, 1, out.length, out[0].length).setValues(out);
+    fo.getRange(2, 5, out.length, 1).setNumberFormat('0%');
+    fo.getRange(2, 7, out.length, 1).setNumberFormat('mmm-yy');
   }
 }
 
@@ -574,9 +575,9 @@ function importAndFilterActiveStaff(config) {
   var rows = data.slice(1);
   var destSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(config.staffSheet || 'Active staff');
   if (!destSheet) throw new Error('Destination staff sheet not found');
-  var practiceIdx = headers.findIndex(function(h){return /^Parent Practice$/i.test(h);});
-  var countryIdx = headers.findIndex(function(h){return /Resource Country/i.test(h);});
-  var titleIdx = headers.findIndex(function(h){return /Resource Title/i.test(h);});
+  var practiceIdx = headers.findIndex(function (h) { return /^Parent Practice$/i.test(h); });
+  var countryIdx = headers.findIndex(function (h) { return /Resource Country/i.test(h); });
+  var titleIdx = headers.findIndex(function (h) { return /Resource Title/i.test(h); });
   if (practiceIdx === -1 || countryIdx === -1 || titleIdx === -1) {
     throw new Error('Required columns missing in Active Staff source (need Parent Practice, Resource Country, Resource Title).');
   }
@@ -586,7 +587,7 @@ function importAndFilterActiveStaff(config) {
   var regionPattern = filterCfg.regionPattern ? new RegExp(filterCfg.regionPattern, 'i') : null;
 
   var filtered = [headers];
-  rows.forEach(function(row){
+  rows.forEach(function (row) {
     var practice = (row[practiceIdx] + '').toLowerCase();
     var country = (row[countryIdx] + '').trim();
     var title = (row[titleIdx] + '').toLowerCase();
@@ -618,8 +619,8 @@ function buildEstVsActAggregate(config) {
 
   function findIndex(patterns) {
     if (!headers || !headers.length) return -1;
-    return headers.findIndex(function(h) {
-      return patterns.some(function(p) {
+    return headers.findIndex(function (h) {
+      return patterns.some(function (p) {
         return new RegExp(p, 'i').test(h);
       });
     });
@@ -653,7 +654,7 @@ function buildEstVsActAggregate(config) {
     return isNaN(num) ? null : num;
   }
 
-  rows.forEach(function(row) {
+  rows.forEach(function (row) {
     var resource = idxResource > -1 ? (row[idxResource] + '').trim() : '';
     var project = idxProject > -1 ? (row[idxProject] + '').trim() : '';
     var dateValue = idxDate > -1 ? coerceToDate_(row[idxDate], timezone) : null;
@@ -679,12 +680,12 @@ function buildEstVsActAggregate(config) {
   });
 
   var output = [];
-  Object.keys(aggregate).sort(function(a, b) {
+  Object.keys(aggregate).sort(function (a, b) {
     var pa = a.split('|'), pb = b.split('|');
     if (pa[0] !== pb[0]) return pa[0].localeCompare(pb[0]);
     if (pa[1] !== pb[1]) return pa[1].localeCompare(pb[1]);
     return pa[2].localeCompare(pb[2]);
-  }).forEach(function(key) {
+  }).forEach(function (key) {
     var parts = key.split('|');
     var monthDate = monthKeyToDate_(parts[2]) || new Date(parts[2] + '-01');
     var est = aggregate[key].est || 0;
@@ -729,7 +730,7 @@ function rebuildVarianceSourceSheet_(config) {
   var header = defaultHeader;
   if (destSheet.getLastRow() >= 1 && destSheet.getLastColumn() >= 1) {
     var existingHeader = destSheet.getRange(1, 1, 1, Math.max(destSheet.getLastColumn(), defaultHeader.length)).getValues()[0];
-    if (existingHeader.some(function(c) { return c !== null && c !== ''; })) {
+    if (existingHeader.some(function (c) { return c !== null && c !== ''; })) {
       header = existingHeader;
     }
   }
@@ -740,14 +741,79 @@ function rebuildVarianceSourceSheet_(config) {
   var activeStaffSheet = ss.getSheetByName(config.staffSheet || 'Active staff');
   var timezone = ss.getSpreadsheetTimeZone();
 
+  // Helper for aggressive normalization
+  function normalizeKey_(str) {
+    if (!str) return '';
+    return (str + '')
+      .replace(/\u00A0/g, ' ')          // non‑breaking spaces to regular spaces
+      .replace(/[\u2010-\u2015]/g, '-') // normalize dash variants to a hyphen
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents/diacritics
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function stripKey_(str) {
+    // removes punctuation to allow looser matching when dash/space patterns differ
+    return normalizeKey_(str).replace(/[^a-z0-9]/g, '');
+  }
+  // DEBUG: Check for specific project issues
+  if (config.debugMode) {
+    Logger.log('--- DEBUG VARIANCE LOOKUP ---');
+    if (lookupsSheet) {
+      Logger.log('Lookups Sheet found. Last Row: ' + lookupsSheet.getLastRow());
+    } else {
+      Logger.log('Lookups Sheet NOT found.');
+    }
+  }
+
   var accountMap = {};
+  var accountMapLoose = {};
+  function fuzzyAccountLookup_(normProj, looseProj) {
+    var best = null;
+    var bestLen = -1;
+    Object.keys(accountMap).forEach(function (k) {
+      if (!k) return;
+      if (k === normProj) return; // already handled
+      if (normProj.indexOf(k) > -1 || k.indexOf(normProj) > -1) {
+        var score = Math.min(k.length, normProj.length);
+        if (score > bestLen) { bestLen = score; best = accountMap[k]; }
+      }
+    });
+    if (!best) {
+      Object.keys(accountMapLoose).forEach(function (k) {
+        if (!k) return;
+        if (k === looseProj) return;
+        if (looseProj && (k.indexOf(looseProj) > -1 || looseProj.indexOf(k) > -1)) {
+          var score = Math.min(k.length, looseProj.length);
+          if (score > bestLen) { bestLen = score; best = accountMapLoose[k]; }
+        }
+      });
+    }
+    return best;
+  }
   if (lookupsSheet && lookupsSheet.getLastRow() > 1) {
     var lData = lookupsSheet.getDataRange().getValues();
-    lData.slice(1).forEach(function(r) {
-      var proj = (r[0] + '').trim();
+    Logger.log('Lookups Data Rows: ' + lData.length);
+    lData.slice(1).forEach(function (r) {
+      var proj = r[0];
       var acc = (r[1] + '').trim();
-      if (proj && acc) accountMap[proj] = acc;
+      if (proj && acc) {
+        var norm = normalizeKey_(proj);
+        var loose = stripKey_(proj);
+        accountMap[norm] = acc;
+        if (!accountMapLoose[loose]) {
+          accountMapLoose[loose] = acc;
+        }
+        // Log first 5 entries to verify normalization
+        if (config.debugMode && Object.keys(accountMap).length <= 5) {
+          Logger.log('Lookup Entry: "' + proj + '" -> Norm: "' + norm + '"');
+        }
+      }
     });
+    if (config.debugMode) {
+      Logger.log('Account Map Size: ' + Object.keys(accountMap).length);
+    }
   }
 
   var resourceMap = {};
@@ -758,7 +824,7 @@ function rebuildVarianceSourceSheet_(config) {
     var IDX_PARENT = 0;
     var IDX_PRACTICE = 1;
     var IDX_ROLE = 3;
-    asData.slice(1).forEach(function(r){
+    asData.slice(1).forEach(function (r) {
       var resName = r.length > IDX_NAME ? (r[IDX_NAME] + '').trim() : '';
       if (!resName) return;
       var cap = r.length > IDX_CAP ? (r[IDX_CAP] + '').trim() : '';
@@ -782,7 +848,7 @@ function rebuildVarianceSourceSheet_(config) {
 
   if (estSheet && estSheet.getLastRow() > 1) {
     var estValues = estSheet.getDataRange().getValues().slice(1);
-    estValues.forEach(function(r) {
+    estValues.forEach(function (r) {
       var project = (r[0] + '').trim();
       var resource = (r[1] + '').trim();
       if (!project || !resource) return;
@@ -792,16 +858,20 @@ function rebuildVarianceSourceSheet_(config) {
 
   if (actSheet && actSheet.getLastRow() > 1) {
     var actValues = actSheet.getDataRange().getValues().slice(1);
-    actValues.forEach(function(r) {
+    actValues.forEach(function (r) {
       var project = (r[1] + '').trim();
       if (!project) return;
       combined.push([r[0], r[1], r[2], r[3]]);
     });
   }
 
-  combined.sort(function(a, b) {
+  combined.sort(function (a, b) {
     return (a[1] || '').localeCompare(b[1] || '');
   });
+
+  if (config.debugMode) {
+    Logger.log('Combined Data Rows (Variance Source): ' + combined.length);
+  }
 
   clearSheetContents_(destSheet);
   destSheet.getRange(1, 1, 1, header.length).setValues([header]);
@@ -810,11 +880,22 @@ function rebuildVarianceSourceSheet_(config) {
     var configSheet = ss.getSheetByName('Config');
     var anchorCell = configSheet ? configSheet.getRange('C7').getValue() : null;
     var anchorDate = coerceToDate_(anchorCell, timezone);
-    var output = combined.map(function(row){
+    var missingCount = 0;
+    var output = combined.map(function (row) {
       var res = row[0], proj = row[1], startDate = row[2], dateVal = row[3];
-      var acct = accountMap[proj] || '#N/A';
+      var normProj = normalizeKey_(proj);
+      var looseProj = stripKey_(proj);
+      var acct = accountMap[normProj] || accountMapLoose[looseProj] || fuzzyAccountLookup_(normProj, looseProj) || '#N/A';
+
+      if (acct === '#N/A' && config.debugMode) {
+        missingCount++;
+        if (missingCount <= 10) { // Log first 10 missing matches only
+          Logger.log('MISSING MATCH: Project: "' + proj + '" -> Norm: "' + normProj + '" (loose key: "' + looseProj + '")');
+        }
+      }
+
       var dateAdj = dateVal ? coerceToDate_(dateVal, timezone) : null;
-      var resInfo = resourceMap[res] || { cap:'Not in lookup', parent:'Not in lookup', practice:'Not in lookup', role:'Not in lookup' };
+      var resInfo = resourceMap[res] || { cap: 'Not in lookup', parent: 'Not in lookup', practice: 'Not in lookup', role: 'Not in lookup' };
       var relMonth = (res && dateAdj && anchorDate) ? ((dateAdj.getFullYear() - anchorDate.getFullYear()) * 12 + (dateAdj.getMonth() - anchorDate.getMonth())) : '';
       var yearMonth = dateAdj ? Utilities.formatDate(new Date(dateAdj.getFullYear(), dateAdj.getMonth() + 1, 0), timezone, 'yyyy - MM') : '';
       return [
@@ -857,7 +938,7 @@ function buildVarianceTab(config) {
   }
 
   var agg = {};
-  data.slice(1).forEach(function(row){
+  data.slice(1).forEach(function (row) {
     if (!row.length) return;
     var fVal = row[5];
     if (fVal === null || typeof fVal === 'undefined' || (fVal + '').trim() === '') return;
@@ -877,7 +958,7 @@ function buildVarianceTab(config) {
   var estActMap = {};
   if (estActSheet && estActSheet.getLastRow() > 1) {
     var eaData = estActSheet.getDataRange().getValues().slice(1);
-    eaData.forEach(function(r){
+    eaData.forEach(function (r) {
       var res = (r[0] + '').trim();
       var proj = (r[1] + '').trim();
       var mVal = r[2];
@@ -895,12 +976,12 @@ function buildVarianceTab(config) {
   if (staffSheet && staffSheet.getLastRow() > 1) {
     var sData = staffSheet.getDataRange().getValues();
     var sHeaders = sData[0];
-    function sFind(pats){return sHeaders.findIndex(function(h){return pats.some(function(p){return new RegExp(p,'i').test(h);});});}
-    var iName = sFind(['ResourceName','Resource Name']);
+    function sFind(pats) { return sHeaders.findIndex(function (h) { return pats.some(function (p) { return new RegExp(p, 'i').test(h); }); }); }
+    var iName = sFind(['ResourceName', 'Resource Name']);
     var iRegion = sFind(['Region']);
-    var iCountry = sFind(['Resource Country','Country']);
+    var iCountry = sFind(['Resource Country', 'Country']);
     var iHub = sFind(['Hub']);
-    sData.slice(1).forEach(function(r){
+    sData.slice(1).forEach(function (r) {
       var name = iName > -1 ? (r[iName] + '').trim() : '';
       if (!name) return;
       staffInfo[name] = {
@@ -917,10 +998,10 @@ function buildVarianceTab(config) {
   if (lookupSheet && lookupSheet.getLastRow() > 1) {
     var lData = lookupSheet.getDataRange().getValues();
     var lHead = lData[0];
-    var lResIdx = lHead.findIndex(function(h){return /Resource/i.test(h);});
-    var lHubIdx = lHead.findIndex(function(h){return /Hub/i.test(h);});
+    var lResIdx = lHead.findIndex(function (h) { return /Resource/i.test(h); });
+    var lHubIdx = lHead.findIndex(function (h) { return /Hub/i.test(h); });
     lookupsAll = lData.slice(1);
-    lookupsAll.forEach(function(r){
+    lookupsAll.forEach(function (r) {
       var res = lResIdx > -1 ? (r[lResIdx] + '').trim() : '';
       var hub = lHubIdx > -1 ? (r[lHubIdx] + '').trim() : '';
       if (res && hub) hubLookup[res] = hub;
@@ -984,19 +1065,19 @@ function buildVarianceTab(config) {
     var parsed = parseMonthString_(ymString);
     if (!parsed) return projectName;
     var endOfMonth = new Date(parsed.year, parsed.month, 0);
-    var match = lookupsAll.find(function(row){ return (row[0] + '').trim() === resourceName || (row[6] + '').trim() === resourceName;});
+    var match = lookupsAll.find(function (row) { return (row[0] + '').trim() === resourceName || (row[6] + '').trim() === resourceName; });
     var colD = match ? match[3] : null;
     var dt = colD instanceof Date ? colD : null;
     if (dt && dt > endOfMonth) return 'Maternity Leave';
     return 'All Leave';
   }
 
-  var rows = Object.keys(agg).filter(function(key){
+  var rows = Object.keys(agg).filter(function (key) {
     var val = (agg[key].cols[4] || '').trim();
     return !/^not in lookup$/i.test(val);
-  }).sort(function(a, b){
+  }).sort(function (a, b) {
     return a.localeCompare(b);
-  }).map(function(key){
+  }).map(function (key) {
     var entry = agg[key];
     var cols = entry.cols.slice();
     cols[1] = adjustAccount_(cols[2], cols[1]);
@@ -1022,65 +1103,122 @@ function buildVarianceTab(config) {
   }
 }
 
+function onOpen() {
+  try {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu('Earned Media Resourcing')
+      .addItem('Refresh All', 'refreshAll')
+      .addItem('Refresh Lookups Only', 'refreshLookupsManual')
+      .addItem('Run Setup', 'runSetup')
+      .addSeparator()
+      .addItem('Debug Variance Lookup', 'debugLookupMatch')
+      .addToUi();
+  } catch (err) {
+    Logger.log('onOpen skipped (no UI available): ' + err);
+  }
+}
+
+/**
+ * Manual trigger for refreshing lookups with UI feedback.
+ */
+function refreshLookupsManual() {
+  var config = getGlobalConfig();
+  var result = refreshLookupsFromConfig_(config);
+  if (result.success) {
+    Browser.msgBox('Success', result.message, Browser.Buttons.OK);
+  } else {
+    Browser.msgBox('Error', result.message, Browser.Buttons.OK);
+  }
+}
+
+function debugLookupMatch() {
+  var config = getGlobalConfig();
+  config.debugMode = true;
+  rebuildVarianceSourceSheet_(config);
+}
+
 /**
  * Copies the Lookups data from the spreadsheet URL/ID specified in Config!C2
- * (range "Import!A1:E") into the local Lookups sheet, replacing the IMPORTRANGE.
+ * (range "Import!A1:E" or configured sheet name) into the local Lookups sheet.
+ * Returns an object { success: boolean, message: string }.
  */
 function refreshLookupsFromConfig_(config) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sourceRef = config && config.lookupsImportUrl ? (config.lookupsImportUrl + '').trim() : '';
+
   if (!sourceRef) {
-    Logger.log('Lookups import skipped: Config!C2 is empty.');
-    return false;
+    var msg = 'Lookups import skipped: Config!C2 ("Lookups Import URL") is empty.';
+    Logger.log(msg);
+    return { success: false, message: msg };
   }
+
   try {
+    Logger.log('Lookups import starting. SourceRef="' + sourceRef + '", Sheet="' + (config.lookupsImportSheetName || 'Import') + '"');
     var source = openSpreadsheetByUrlOrId_(sourceRef);
-    var sourceSheet = source.getSheetByName('Import');
+    var sheetName = config.lookupsImportSheetName || 'Import';
+    var sourceSheet = source.getSheetByName(sheetName);
+
     if (!sourceSheet) {
-      Logger.log('Lookups import skipped: sheet "Import" not found in source.');
-      return false;
+      var msg = 'Lookups import failed: Sheet "' + sheetName + '" not found in source spreadsheet.';
+      Logger.log(msg);
+      return { success: false, message: msg };
     }
+
     var values = sourceSheet.getDataRange().getValues();
+    Logger.log('Lookups source data size: rows=' + values.length + ', cols=' + (values[0] ? values[0].length : 0));
     if (!values || !values.length) {
-      Logger.log('Lookups import skipped: source has no data.');
-      return false;
+      var msg = 'Lookups import skipped: Source sheet "' + sheetName + '" has no data.';
+      Logger.log(msg);
+      return { success: false, message: msg };
     }
+
     var dest = ss.getSheetByName('Lookups') || ss.insertSheet('Lookups');
     var clearRows = Math.max(dest.getLastRow(), values.length);
-    if (clearRows) {
+    if (clearRows > 0) {
       dest.getRange(1, 1, clearRows, 5).clearContent();
     }
-    dest.getRange(1, 1, values.length, values[0].length).setValues(values);
+
+    var width = 5; // Only update columns A:E
+    var trimmed = values.map(function (row) {
+      var out = row.slice(0, width);
+      while (out.length < width) out.push('');
+      return out;
+    });
+    dest.getRange(1, 1, trimmed.length, width).setValues(trimmed);
+    Logger.log('Lookups import wrote ' + trimmed.length + ' rows to Lookups!A:E');
     dest.getRange('L1').setValue('Accounts');
     dest.getRange('L2').setFormula('=SORT(UNIQUE(FILTER(B2:B, E2:E <> "Project Close Out")),1,1)');
     dest.getRange('N1').setValue('Practices for Actuals Report');
     dest.getRange('N2').setFormula('=JOIN(", ",N3:N20)');
     dest.getRange('N3').setFormula('=UNIQUE(\'Final - Capacity\'!F3:F)');
     dest.autoResizeColumns(1, Math.max(values[0].length, 14));
-    return true;
+
+    return { success: true, message: 'Lookups updated successfully from "' + sheetName + '".' };
+
   } catch (err) {
-    Logger.log('Lookups import failed: ' + err);
-    return false;
+    var msg = 'Lookups import failed: ' + err.toString() + ' Stack: ' + (err && err.stack ? err.stack : '');
+    Logger.log(msg);
+    return { success: false, message: msg };
   }
 }
 
 /** Country mapping **/
 var COUNTRY_MAP = {
-  'United Kingdom':'UK','Germany':'DE','Denmark':'DK','France':'FR',
-  'South Africa':'ZA','Spain':'ES','Netherlands':'NL','Italy':'IT',
-  'United Arab Emirates':'AE','UAE':'AE','AE':'AE',
-  'Australia':'AU','AU':'AU',
-  'Israel':'IL','IL':'IL',
-  'India':'IN','IN':'IN',
-  'Mexico':'MX','MX':'MX',
-  'United States':'US','USA':'US','US':'US',
-  'Japan':'JP','JP':'JP',
-  'SA':'ZA','ZA':'ZA'
+  'United Kingdom': 'UK', 'Germany': 'DE', 'Denmark': 'DK', 'France': 'FR',
+  'South Africa': 'ZA', 'Spain': 'ES', 'Netherlands': 'NL', 'Italy': 'IT',
+  'United Arab Emirates': 'AE', 'UAE': 'AE', 'AE': 'AE',
+  'Australia': 'AU', 'AU': 'AU',
+  'Israel': 'IL', 'IL': 'IL',
+  'India': 'IN', 'IN': 'IN',
+  'Mexico': 'MX', 'MX': 'MX',
+  'United States': 'US', 'USA': 'US', 'US': 'US',
+  'Japan': 'JP', 'JP': 'JP',
+  'SA': 'ZA', 'ZA': 'ZA'
 };
 var COUNTRY_DISPLAY_OVERRIDES = {
-  'ZA':'South Africa',
-  'AE':'United Arab Emirates',
-  'US':'United States'
+  'ZA': 'South Africa',
+  'AE': 'United Arab Emirates',
+  'US': 'United States'
 };
 
 function getSpreadsheetIdFromConfig_() {
@@ -1093,6 +1231,28 @@ function getSpreadsheetIdFromConfig_() {
   if (!raw) return fallback;
   var match = raw.match(/[-\w]{25,}/);
   return match ? match[0] : raw;
+}
+
+function readUrlFromCell_(rng) {
+  if (!rng) return '';
+  try {
+    var rich = rng.getRichTextValue && rng.getRichTextValue();
+    if (rich && rich.getLinkUrl && rich.getLinkUrl()) {
+      return (rich.getLinkUrl() + '').trim();
+    }
+    var formula = rng.getFormula && rng.getFormula();
+    if (formula) {
+      var m = (formula + '').match(/https?:\/\/[^\s",)]+/i);
+      if (m) return m[0].trim();
+    }
+    var val = rng.getValue && rng.getValue();
+    if (typeof val === 'string' && val.trim()) return val.trim();
+    var display = rng.getDisplayValue && rng.getDisplayValue();
+    if (display) return (display + '').trim();
+  } catch (err) {
+    Logger.log('readUrlFromCell_ error: ' + err);
+  }
+  return '';
 }
 
 function normalizeCountryCode_(value) {
@@ -1154,11 +1314,11 @@ function getGlobalConfig() {
   }
 
   var regionsRow = configSheet.getRange('D6:Z6').getDisplayValues()[0] || [];
-  var regionsList = regionsRow.map(function(cell){return (cell + '').trim();}).filter(function(cell){return cell;});
+  var regionsList = regionsRow.map(function (cell) { return (cell + '').trim(); }).filter(function (cell) { return cell; });
 
   var rawCalendarLink = findValue('Global Holidays');
   var calendarMatch = rawCalendarLink ? rawCalendarLink.match(/[-\w]{25,}/) : null;
-  var lookupsImportUrl = (configSheet.getRange('C2').getDisplayValue() + '').trim();
+  var lookupsImportUrl = readUrlFromCell_(configSheet.getRange('C2'));
 
   var settings = {
     importSchedules: findValue('IMPORT-FF Schedules') || 'IMPORT-FF Schedules',
@@ -1183,7 +1343,8 @@ function getGlobalConfig() {
     dataStartColumn: parseInt(findValue('Data Start Column') || '8', 10) || 8,
     regionCalendarId: calendarMatch ? calendarMatch[0] : (rawCalendarLink || ''),
     regionsInScope: regionsList,
-    lookupsImportUrl: lookupsImportUrl
+    lookupsImportUrl: lookupsImportUrl,
+    lookupsImportSheetName: findValue('Lookups Import Sheet Name') || 'Import'
   };
 
   return settings;
@@ -1213,7 +1374,7 @@ function setupConfigTab() {
   var lastRow = Math.max(sheet.getLastRow(), 1);
   var existingValues = sheet.getRange(1, 2, lastRow, 1).getDisplayValues();
   var existingKeys = {};
-  existingValues.forEach(function(row){
+  existingValues.forEach(function (row) {
     var key = (row[0] + '').trim();
     if (key) existingKeys[key] = true;
   });
@@ -1239,10 +1400,12 @@ function setupConfigTab() {
     { key: 'Role Config Sheet', sample: 'Role Config' },
     { key: 'Leave Project Name', sample: 'JFGP All Leave' },
     { key: 'Data Start Column', sample: '8' },
-    { key: 'Global Holidays', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE_HOLIDAYS/edit' }
+    { key: 'Data Start Column', sample: '8' },
+    { key: 'Global Holidays', sample: 'https://docs.google.com/spreadsheets/d/EXAMPLE_HOLIDAYS/edit' },
+    { key: 'Lookups Import Sheet Name', sample: 'Import' }
   ];
 
-  requiredEntries.forEach(function(entry){
+  requiredEntries.forEach(function (entry) {
     if (!existingKeys[entry.key]) {
       sheet.appendRow(['', entry.key, entry.sample]);
       existingKeys[entry.key] = true;
@@ -1260,22 +1423,22 @@ function setupRoleConfigTab() {
   }
 
   var dataRange = sheet.getDataRange();
-  var hasData = dataRange.getNumRows() > 1 && dataRange.getValues().slice(1).some(function(row){
-    return row.some(function(cell){return cell !== '' && cell !== null;});
+  var hasData = dataRange.getNumRows() > 1 && dataRange.getValues().slice(1).some(function (row) {
+    return row.some(function (cell) { return cell !== '' && cell !== null; });
   });
   if (hasData) return;
 
   clearSheetContents_(sheet);
-  var headers = ['Role','Billable %'];
+  var headers = ['Role', 'Billable %'];
   var defaults = [
-    ['(default)','100%'],
-    ['VP','50%'],
-    ['Director','70%'],
-    ['Executive','80%'],
-    ['Manager','80%']
+    ['(default)', '100%'],
+    ['VP', '50%'],
+    ['Director', '70%'],
+    ['Executive', '80%'],
+    ['Manager', '80%']
   ];
-  sheet.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold');
-  sheet.getRange(2,1,defaults.length,headers.length).setValues(defaults);
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.getRange(2, 1, defaults.length, headers.length).setValues(defaults);
   sheet.autoResizeColumns(1, headers.length);
 }
 
@@ -1296,14 +1459,14 @@ function refreshCountryHoursFromRegion_(ss, config) {
     if (!months.length) return false;
     var countries = Object.keys(configs).sort();
     var outputRows = [];
-    months.forEach(function(monthKey){
-      countries.forEach(function(ct){
+    months.forEach(function (monthKey) {
+      countries.forEach(function (ct) {
         var hours = calculateMonthlyHours_(configs[ct], monthKey, holidays[ct], timezone);
         outputRows.push([ct, monthKey, hours]);
       });
     });
     clearSheetContents_(countryHoursSheet);
-    countryHoursSheet.getRange(1, 1, 1, 3).setValues([['Country','Month','Hours']]);
+    countryHoursSheet.getRange(1, 1, 1, 3).setValues([['Country', 'Month', 'Hours']]);
     if (outputRows.length) {
       countryHoursSheet.getRange(2, 1, outputRows.length, 3).setValues(outputRows);
     }
@@ -1325,14 +1488,14 @@ function extractRegionConfigs_(sheet) {
   var idxEnd = headers.indexOf('Workweek End (Mon=1 ... Sun=7)');
   var idxHours = headers.indexOf('Hours Per Day');
   var configs = {};
-  data.slice(1).forEach(function(row){
+  data.slice(1).forEach(function (row) {
     var countriesCell = idxCountries > -1 ? row[idxCountries] : '';
     if (!countriesCell) return;
     var hoursPerDay = idxHours > -1 ? parseFloat(row[idxHours]) || 0 : 0;
     var startDow = idxStart > -1 ? parseInt(row[idxStart], 10) || 1 : 1;
     var endDow = idxEnd > -1 ? parseInt(row[idxEnd], 10) || 5 : 5;
     var regionCode = idxRegion > -1 ? (row[idxRegion] + '') : '';
-    (countriesCell + '').split(',').forEach(function(token){
+    (countriesCell + '').split(',').forEach(function (token) {
       var country = token.trim();
       if (!country) return;
       var canonical = normalizeCountryCode_(country);
@@ -1356,7 +1519,7 @@ function extractHolidayMap_(sheet, timezone) {
   var headers = data[0];
   var idxCountry = headers.indexOf('Country Code');
   var idxDate = headers.indexOf('Date');
-  data.slice(1).forEach(function(row){
+  data.slice(1).forEach(function (row) {
     var countryRaw = idxCountry > -1 ? (row[idxCountry] + '').trim() : '';
     var canonical = normalizeCountryCode_(countryRaw);
     if (!canonical) return;
@@ -1379,7 +1542,7 @@ function determineMonthsToBuild_(ss, countryHoursSheet, timezone, config) {
   }
   if (countryHoursSheet && countryHoursSheet.getLastRow() > 1) {
     var existing = countryHoursSheet.getRange(2, 2, countryHoursSheet.getLastRow() - 1, 1).getValues();
-    existing.forEach(function(row){
+    existing.forEach(function (row) {
       var dt = parseMonthYearValue_(row[0]);
       if (dt) add(dt);
     });
@@ -1418,11 +1581,11 @@ function parseMonthYearValue_(value) {
   var str = (value + '').trim();
   if (!str) return null;
   var iso = str.match(/^(\d{4})[-\/](\d{1,2})$/);
-  if (iso) return new Date(parseInt(iso[1],10), parseInt(iso[2],10)-1, 1);
+  if (iso) return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, 1);
   var short = str.match(/^(\d{1,2})[-\/](\d{2,4})$/);
   if (short) {
-    var mm = parseInt(short[1],10)-1;
-    var yy = parseInt(short[2],10);
+    var mm = parseInt(short[1], 10) - 1;
+    var yy = parseInt(short[2], 10);
     if (yy < 100) yy += 2000;
     return new Date(yy, mm, 1);
   }
@@ -1437,7 +1600,7 @@ function coerceToDate_(value, timezone) {
   if (!str) return null;
   if (/^[A-Za-z]{3}-\d{2}$/.test(str)) {
     var parts = str.split('-');
-    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     var idx = months.indexOf(parts[0]);
     if (idx > -1) {
       var year = 2000 + parseInt(parts[1], 10);
@@ -1446,9 +1609,9 @@ function coerceToDate_(value, timezone) {
   }
   var dateMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (dateMatch) {
-    var d = parseInt(dateMatch[1],10);
-    var m = parseInt(dateMatch[2],10)-1;
-    var y = parseInt(dateMatch[3],10);
+    var d = parseInt(dateMatch[1], 10);
+    var m = parseInt(dateMatch[2], 10) - 1;
+    var y = parseInt(dateMatch[3], 10);
     if (y < 100) y += 2000;
     return new Date(y, m, d);
   }
@@ -1488,13 +1651,13 @@ function refreshAll() {
 
 function scheduleNextStep_(functionName) {
   // Clean up any pending triggers to avoid duplicates.
-  ScriptApp.getProjectTriggers().forEach(function(trig){
+  ScriptApp.getProjectTriggers().forEach(function (trig) {
     if (trig.getHandlerFunction && (
-        trig.getHandlerFunction() === functionName || 
-        trig.getHandlerFunction().startsWith('phase1_') ||
-        trig.getHandlerFunction().startsWith('phase2_') ||
-        trig.getHandlerFunction() === 'refreshAllPhase2'
-      )) {
+      trig.getHandlerFunction() === functionName ||
+      trig.getHandlerFunction().startsWith('phase1_') ||
+      trig.getHandlerFunction().startsWith('phase2_') ||
+      trig.getHandlerFunction() === 'refreshAllPhase2'
+    )) {
       ScriptApp.deleteTrigger(trig);
     }
   });
@@ -1528,8 +1691,8 @@ function onOpen() {
   try {
     var ui = SpreadsheetApp.getUi();
     ui.createMenu('Earned Media Resourcing')
-      .addItem('Refresh All','refreshAll')
-      .addItem('Run Setup','runSetup')
+      .addItem('Refresh All', 'refreshAll')
+      .addItem('Run Setup', 'runSetup')
       .addToUi();
   } catch (err) {
     Logger.log('onOpen skipped (no UI available): ' + err);
@@ -1548,7 +1711,7 @@ function openSpreadsheetByUrlOrId_(input) {
   }
   var matches = trimmed.match(/[-\w]{20,}/g);
   if (matches && matches.length) {
-    matches.forEach(function(token) {
+    matches.forEach(function (token) {
       if (idCandidates.indexOf(token) === -1) {
         idCandidates.push(token);
       }
@@ -1623,12 +1786,19 @@ function phase1_step3_refreshLookups() {
   try {
     var config = getGlobalConfig();
     Logger.log('Starting Phase 1, Step 3: refreshLookupsFromConfig_');
-    refreshLookupsFromConfig_(config);
+    var result = refreshLookupsFromConfig_(config);
+    if (result.success) {
+      Logger.log('Step 3 Success: ' + result.message);
+    } else {
+      Logger.log('Step 3 Warning: ' + result.message);
+    }
     SpreadsheetApp.flush();
     Logger.log('Completed Step 3. Scheduling Phase 2.');
     scheduleNextStep_('phase2_step1_buildEstVsAct');
   } catch (e) {
     Logger.log('Error in step 3 (refreshLookupsFromConfig_): ' + e.toString());
+    // Continue to next step even if this fails, to avoid blocking the whole chain
+    scheduleNextStep_('phase2_step1_buildEstVsAct');
   }
 }
 
@@ -1702,7 +1872,7 @@ function phase2_step6_buildVarianceTab() {
     buildVarianceTab(config);
     Logger.log('Phase 2 complete. All steps finished.');
     // This is the last step, so we delete any remaining triggers for this chain. 
-    scheduleNextStep_(null); 
+    scheduleNextStep_(null);
   } catch (e) {
     Logger.log('Error in step 6 (buildVarianceTab): ' + e.toString());
   }
