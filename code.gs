@@ -2035,6 +2035,32 @@ function buildAccountHubLeadTab(config) {
       .build();
     rules.push(newRule);
     targetSheet.setConditionalFormatRules(rules);
+
+    // Data Validation for Hub Lead (Column D, index 4)
+    var lookupSheet = ss.getSheetByName('Lookups');
+    if (lookupSheet && lookupSheet.getLastRow() > 1) {
+      // Column H is index 8 (1-based) or 7 (0-based). 
+      // Let's assume Column H means the 8th column.
+      var lookupValues = lookupSheet.getRange(2, 8, lookupSheet.getLastRow() - 1, 1).getValues();
+      var uniqueLeads = [];
+      var seen = {};
+      for (var i = 0; i < lookupValues.length; i++) {
+        var val = (lookupValues[i][0] + '').trim();
+        if (val && !seen[val]) {
+          uniqueLeads.push(val);
+          seen[val] = true;
+        }
+      }
+      uniqueLeads.sort();
+
+      if (uniqueLeads.length > 0) {
+        var validation = SpreadsheetApp.newDataValidation()
+          .requireValueInList(uniqueLeads, true)
+          .setAllowInvalid(true) // Allow existing values even if not in list, or set to false to restrict
+          .build();
+        targetSheet.getRange(2, 4, output.length, 1).setDataValidation(validation);
+      }
+    }
   }
   targetSheet.autoResizeColumns(1, outHeaders.length);
 }
