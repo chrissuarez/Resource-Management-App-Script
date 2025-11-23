@@ -1958,15 +1958,28 @@ function buildAccountHubLeadTab(config) {
           if (eSponIdx === -1) eSponIdx = 9; // J
           if (eMarkIdx === -1) eMarkIdx = 10; // K
 
+          function cleanKey(str) {
+            if (!str) return '';
+            return (str + '').replace(/\u00A0/g, ' ').trim().toLowerCase();
+          }
+
           for (var i = 1; i < extData.length; i++) {
             var row = extData[i];
             if (!row) continue;
-            var acc = (row[eAccIdx] + '').trim();
-            if (!acc) continue;
-            sponsorMap[acc.toLowerCase()] = {
-              sponsor: (row[eSponIdx] + '').trim(),
-              region: (row[eMarkIdx] + '').trim()
-            };
+            var accRaw = (row[eAccIdx] + '');
+            var accKey = cleanKey(accRaw);
+            if (!accKey) continue;
+
+            var sponsor = (row[eSponIdx] + '').trim();
+            var region = (row[eMarkIdx] + '').trim();
+
+            // Only overwrite if we have new data OR if the existing entry was empty
+            if (!sponsorMap[accKey] || (sponsor && region)) {
+              sponsorMap[accKey] = {
+                sponsor: sponsor,
+                region: region
+              };
+            }
           }
         }
       }
@@ -1977,8 +1990,14 @@ function buildAccountHubLeadTab(config) {
 
   // 4. Build Output
   var output = [];
+  function cleanKeyForLookup(str) {
+    if (!str) return '';
+    return (str + '').replace(/\u00A0/g, ' ').trim().toLowerCase();
+  }
+
   accountList.forEach(function (acc) {
-    var info = sponsorMap[acc.toLowerCase()] || { sponsor: '', region: '' };
+    var key = cleanKeyForLookup(acc);
+    var info = sponsorMap[key] || { sponsor: '', region: '' };
     var hubLead = existingHubLeads[acc] || '';
     output.push([acc, info.sponsor, info.region, hubLead]);
   });
