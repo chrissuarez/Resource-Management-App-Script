@@ -1997,9 +1997,23 @@ function buildAccountHubLeadTab(config) {
 
   accountList.forEach(function (acc) {
     var key = cleanKeyForLookup(acc);
-    var info = sponsorMap[key] || { sponsor: '', region: '' };
+    var info = sponsorMap[key] || { sponsor: 'Not found', region: 'Not found' };
     var hubLead = existingHubLeads[acc] || '';
     output.push([acc, info.sponsor, info.region, hubLead]);
+  });
+
+  // Sort by Region (index 2), then Account (index 0)
+  output.sort(function (a, b) {
+    var regionA = (a[2] || '').toLowerCase();
+    var regionB = (b[2] || '').toLowerCase();
+    if (regionA < regionB) return -1;
+    if (regionA > regionB) return 1;
+
+    var accA = (a[0] || '').toLowerCase();
+    var accB = (b[0] || '').toLowerCase();
+    if (accA < accB) return -1;
+    if (accA > accB) return 1;
+    return 0;
   });
 
   // 5. Write to Sheet
@@ -2010,6 +2024,17 @@ function buildAccountHubLeadTab(config) {
   targetSheet.getRange(1, 1, 1, outHeaders.length).setValues([outHeaders]).setFontWeight('bold');
   if (output.length) {
     targetSheet.getRange(2, 1, output.length, outHeaders.length).setValues(output);
+
+    // Conditional Formatting for Hub Lead (Column D, index 4)
+    var range = targetSheet.getRange(2, 4, output.length, 1);
+    var rules = targetSheet.getConditionalFormatRules();
+    var newRule = SpreadsheetApp.newConditionalFormatRule()
+      .whenCellEmpty()
+      .setBackground('#FFD700') // Gold
+      .setRanges([range])
+      .build();
+    rules.push(newRule);
+    targetSheet.setConditionalFormatRules(rules);
   }
   targetSheet.autoResizeColumns(1, outHeaders.length);
 }
