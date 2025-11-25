@@ -22,6 +22,7 @@ code.gs   // Main Apps Script file (can be pasted into Apps Script or clasp proj
    - Create a Google Sheet and add the tabs referenced by the script (e.g., `IMPORT-FF Schedules`, `Est vs Act - Import`, `Actuals - Import`, `Consolidated-FF Schedules`, `Active staff`, `Country Hours`).
    - Set the spreadsheet ID in `spreadsheetId` inside `importDataFromEmails()`.
    - Populate `Region Calendar` + `Region Holidays`, then let the automation rebuild `Country Hours` (it keeps `Country | Month | Hours`, so existing lookups remain valid).
+   - **Important:** When deploying to production, ensure you copy the "Config" tab from the staging sheet to the production sheet if it's missing or incomplete. This tab contains critical settings that may not be present in a new sheet.
 
 2. **Gmail Labels**
    - Create Gmail labels that match the entries in the `emailConfigs` array (or adjust the array to your labels).
