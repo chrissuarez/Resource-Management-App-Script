@@ -19,12 +19,20 @@ function importDataFromEmails() {
       if (lastRow >= startRow) {
         var configData = configSheet.getRange(startRow, 2, lastRow - startRow + 1, 4).getValues();
         configData.forEach(function (row, index) {
-          Logger.log('Debug: Processing row ' + (startRow + index) + '. Value in column B is: "' + row[0] + '"');
-          if ((row[0] + '').trim() !== 'Email Import') return;
+          var typeValue = (row[0] + '').trim();
+          Logger.log('Debug: Row ' + (startRow + index) + ' Column B: "' + typeValue + '"');
+          if (typeValue !== 'Email Import') return;
+          
           var label = (row[1] + '').trim();
           var sheetName = (row[2] + '').trim();
-          if (!label || !sheetName) return;
           var encoding = (row[3] + '').trim() || 'UTF-8';
+          
+          Logger.log('Debug: Row ' + (startRow + index) + ' - Label: "' + label + '", Sheet Name: "' + sheetName + '", Encoding: "' + encoding + '"');
+          
+          if (!label || !sheetName) {
+            Logger.log('Warning: Row ' + (startRow + index) + ' skipped because Label or Sheet Name is empty.');
+            return;
+          }
           emailConfigs.push({ label: label, sheetName: sheetName, encoding: encoding });
         });
       }
