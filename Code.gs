@@ -46,7 +46,8 @@ function importDataFromEmails() {
         return; // continue to next config in the forEach loop
       }
 
-      var message = threads[0].getMessages()[0];
+      var messages = threads[0].getMessages();
+      var message = messages[messages.length - 1]; // Get the LATEST message in the latest thread
       var attachments = message.getAttachments();
       var csvAttachment = attachments.find(att => att.getContentType() === 'text/csv' || att.getContentType() === 'application/csv');
 
@@ -1280,11 +1281,8 @@ function ensureSheet_(ss, name) {
 }
 
 function clearSheetContents_(sheet) {
-  if (!sheet) return;
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow && lastCol) {
-    sheet.getRange(1, 1, lastRow, lastCol).clearContent();
+  if (sheet) {
+    sheet.clearContents();
   }
 }
 
