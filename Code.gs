@@ -25,7 +25,7 @@ function importDataFromEmails() {
           
           var label = (row[1] + '').trim();
           var sheetName = (row[2] + '').trim();
-          var encoding = (row[3] + '').trim() || 'UTF-8';
+          var encoding = (row[3] + '').trim() || 'ISO-8859-1';
           
           Logger.log('Debug: Row ' + (startRow + index) + ' - Label: "' + label + '", Sheet Name: "' + sheetName + '", Encoding: "' + encoding + '"');
           
@@ -64,7 +64,7 @@ function importDataFromEmails() {
         return; // continue to next config
       }
 
-      var charEncoding = config.encoding || 'UTF-8';
+      var charEncoding = config.encoding || 'ISO-8859-1';
       var csvDataString = csvAttachment.getDataAsString(charEncoding);
       var data = Utilities.parseCsv(csvDataString);
 
