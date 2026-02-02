@@ -333,6 +333,9 @@ function buildAvailabilityMatrix(config) {
   var hd = hoursSheet.getDataRange().getValues().slice(1), hmap = {};
   hd.forEach(function (r) {
     var ct = normalizeCountryCode_(r[0]);
+    if (ct === 'SE' || r[0] === 'Sweden') {
+      Logger.log('DEBUG: Found Sweden in Country Hours sheet. Raw: "' + r[0] + '", Normalized: "' + ct + '", Date: ' + r[1] + ', Hours: ' + r[2]);
+    }
     if (!ct) return;
     var dt = r[1], hrs = parseFloat(r[2]) || 0;
     var d = dt instanceof Date ? dt : parseMonthYearValue_(dt);
@@ -350,6 +353,16 @@ function buildAvailabilityMatrix(config) {
   rows.forEach(function (r) {
     var name = r[iName] + ''; if (!name) return;
     var ctCode = normalizeCountryCode_(r[iCountry]);
+
+    if (name.indexOf('Rebecca Kalman') > -1) {
+      Logger.log('DEBUG: Processing ' + name + '. Raw Country: "' + r[iCountry] + '". Normalized Code: "' + ctCode + '"');
+      months.forEach(function (m) {
+        var key = ctCode + '|' + Utilities.formatDate(new Date(m + '-01'), ss.getSpreadsheetTimeZone(), 'yyyy-MM');
+        var method2 = ctCode + '|' + m; // Try alternative key format if needed (though map uses yyyy-MM)
+        Logger.log('DEBUG: Looked up key: "' + key + '". Found hours: ' + (hmap[key]));
+      });
+    }
+
     var st = r[iStart] ? new Date(r[iStart]) : null;
     var f = parseFloat(r[iFTE]) || 0;
     var row = [name];
