@@ -1140,10 +1140,22 @@ function refreshLookupsManual() {
   }
 }
 
+
 function debugLookupMatch() {
   var config = getGlobalConfig();
   config.debugMode = true;
   rebuildVarianceSourceSheet_(config);
+}
+
+/**
+ * Verification function for Sweden country mapping change.
+ * Runs only the Availability Matrix build step.
+ */
+function testSwedenAvailability() {
+  var config = getGlobalConfig();
+  Logger.log('Starting Sweden Availability Test (buildAvailabilityMatrix)...');
+  buildAvailabilityMatrix(config);
+  Logger.log('Finished building Availability Matrix. Please check the "Availability Matrix" tab for Sweden resource hours.');
 }
 
 /**
