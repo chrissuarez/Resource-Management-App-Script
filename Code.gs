@@ -362,7 +362,8 @@ function buildAvailabilityMatrix(config) {
       var wh = ctCode ? (hmap[ctCode + '|' + key] || 0) : 0;
       var tot = cw(ms, me);
       var av = !st ? tot : (st > me ? 0 : (st <= ms ? tot : cw(st, me)));
-      row.push(av ? (f * wh) * (av / tot) : '');
+      var val = av ? (f * wh) * (av / tot) : '';
+      row.push(typeof val === 'number' ? Math.round(val * 10) / 10 : val);
     });
     outData.push(row);
   });
