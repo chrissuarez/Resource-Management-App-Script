@@ -1175,6 +1175,14 @@ function debugLookupMatch() {
  */
 function testSwedenAvailability() {
   var config = getGlobalConfig();
+  Logger.log('Refreshing Active Staff from source...');
+  try {
+    importAndFilterActiveStaff(config);
+    Logger.log('Active Staff refreshed successfully.');
+  } catch (e) {
+    Logger.log('Error refreshing Active Staff: ' + e.toString());
+  }
+
   Logger.log('Starting Sweden Availability Test (buildAvailabilityMatrix)...');
   buildAvailabilityMatrix(config);
   Logger.log('Finished building Availability Matrix. Please check the "Availability Matrix" tab for Sweden resource hours.');
