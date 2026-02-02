@@ -1153,24 +1153,6 @@ function debugLookupMatch() {
   rebuildVarianceSourceSheet_(config);
 }
 
-/**
- * Verification function for Sweden country mapping change.
- * Runs only the Availability Matrix build step.
- */
-function testSwedenAvailability() {
-  var config = getGlobalConfig();
-  Logger.log('Refreshing Active Staff from source...');
-  try {
-    importAndFilterActiveStaff(config);
-    Logger.log('Active Staff refreshed successfully.');
-  } catch (e) {
-    Logger.log('Error refreshing Active Staff: ' + e.toString());
-  }
-
-  Logger.log('Starting Sweden Availability Test (buildAvailabilityMatrix)...');
-  buildAvailabilityMatrix(config);
-  Logger.log('Finished building Availability Matrix. Please check the "Availability Matrix" tab for Sweden resource hours.');
-}
 
 /**
  * Copies the Lookups data from the spreadsheet URL/ID specified in Config!C2
