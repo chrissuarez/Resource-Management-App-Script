@@ -22,13 +22,13 @@ function importDataFromEmails() {
           var typeValue = (row[0] + '').trim();
           Logger.log('Debug: Row ' + (startRow + index) + ' Column B: "' + typeValue + '"');
           if (typeValue !== 'Email Import') return;
-          
+
           var label = (row[1] + '').trim();
           var sheetName = (row[2] + '').trim();
           var encoding = (row[3] + '').trim() || 'ISO-8859-1';
-          
+
           Logger.log('Debug: Row ' + (startRow + index) + ' - Label: "' + label + '", Sheet Name: "' + sheetName + '", Encoding: "' + encoding + '"');
-          
+
           if (!label || !sheetName) {
             Logger.log('Warning: Row ' + (startRow + index) + ' skipped because Label or Sheet Name is empty.');
             return;
@@ -1215,6 +1215,7 @@ function refreshLookupsFromConfig_(config) {
 var COUNTRY_MAP = {
   'United Kingdom': 'UK', 'Germany': 'DE', 'Denmark': 'DK', 'France': 'FR',
   'South Africa': 'ZA', 'Spain': 'ES', 'Netherlands': 'NL', 'Italy': 'IT',
+  'Sweden': 'SE',
   'United Arab Emirates': 'AE', 'UAE': 'AE', 'AE': 'AE',
   'Australia': 'AU', 'AU': 'AU',
   'Israel': 'IL', 'IL': 'IL',
