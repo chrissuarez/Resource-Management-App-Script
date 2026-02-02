@@ -328,18 +328,11 @@ function buildAvailabilityMatrix(config) {
 
   var sd = staffSheet.getDataRange().getValues(), hdr = sd[0], rows = sd.slice(1);
   function find(pats) { return hdr.findIndex(h => pats.some(p => new RegExp(p, 'i').test(h))); }
-  var iName = find(['ResourceName', 'Resource Name']), iCountry = find(['Resource Country']), iStart = find(['Start Date']), iFTE = find(['FTE']);
-
-  Logger.log('DEBUG: Active Staff Headers: ' + JSON.stringify(hdr));
-  Logger.log('DEBUG: Column Indices - Name: ' + iName + ', Country: ' + iCountry + ', StartDate: ' + iStart + ', FTE: ' + iFTE);
-
+  var iName = find(['ResourceName', 'Resource Name']), iCountry = find(['Resource Country']), iStart = find(['Start Date']), iFTE = find(['FTE', 'Weekly Hours', 'WeeklyHours']);
 
   var hd = hoursSheet.getDataRange().getValues().slice(1), hmap = {};
   hd.forEach(function (r) {
     var ct = normalizeCountryCode_(r[0]);
-    if (ct === 'SE' || r[0] === 'Sweden') {
-      Logger.log('DEBUG: Found Sweden in Country Hours sheet. Raw: "' + r[0] + '", Normalized: "' + ct + '", Date: ' + r[1] + ', Hours: ' + r[2]);
-    }
     if (!ct) return;
     var dt = r[1], hrs = parseFloat(r[2]) || 0;
     var d = dt instanceof Date ? dt : parseMonthYearValue_(dt);
@@ -356,23 +349,10 @@ function buildAvailabilityMatrix(config) {
   var outData = [];
   rows.forEach(function (r) {
     var name = r[iName] + ''; if (!name) return;
-    var ctCode = normalizeCountryCode_(r[iCountry]);
-
-    if (name.indexOf('Rebecca Kalman') > -1) {
-      Logger.log('DEBUG: Processing ' + name + '. Raw Country: "' + r[iCountry] + '". Normalized Code: "' + ctCode + '"');
-      months.forEach(function (m) {
-        var key = ctCode + '|' + Utilities.formatDate(new Date(m + '-01'), ss.getSpreadsheetTimeZone(), 'yyyy-MM');
-        var method2 = ctCode + '|' + m; // Try alternative key format if needed (though map uses yyyy-MM)
-        Logger.log('DEBUG: Looked up key: "' + key + '". Found hours: ' + (hmap[key]));
-      });
-    }
-
     var st = r[iStart] ? new Date(r[iStart]) : null;
-    var f = parseFloat(r[iFTE]) || 0;
-
-    if (name.indexOf('Rebecca Kalman') > -1) {
-      Logger.log('DEBUG: ' + name + ' | FTE: ' + f + ' | StartDate: ' + st);
-    }
+    var fRaw = iFTE > -1 ? parseFloat(r[iFTE]) : 1.0;
+    var f = isNaN(fRaw) ? 1.0 : fRaw;
+    if (f > 2) f = f / 37.5; // Convert Weekly Hours to FTE (assuming 37.5 is standard)
 
     var row = [name];
     months.forEach(function (m) {
@@ -460,7 +440,9 @@ function buildFinalCapacity(config) {
     var countryOriginal = r[iC] + '';
     var countryCode = normalizeCountryCode_(countryOriginal);
     var startDate = iStart > -1 && r[iStart] ? new Date(r[iStart]) : null;
-    var fte = iFte > -1 ? parseFloat(r[iFte]) || 0 : 0;
+    var fRaw = iFte > -1 ? parseFloat(r[iFte]) : 1.0;
+    var fte = isNaN(fRaw) ? 1.0 : fRaw;
+    if (fte > 2) fte = fte / 37.5;
     var hubValue = iHub > -1 ? (r[iHub] + '').trim() : '';
     if (!hubValue && hubLookup[n]) hubValue = hubLookup[n];
     staffMap[n] = {
