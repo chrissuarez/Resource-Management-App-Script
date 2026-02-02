@@ -365,6 +365,11 @@ function buildAvailabilityMatrix(config) {
 
     var st = r[iStart] ? new Date(r[iStart]) : null;
     var f = parseFloat(r[iFTE]) || 0;
+
+    if (name.indexOf('Rebecca Kalman') > -1) {
+      Logger.log('DEBUG: ' + name + ' | FTE: ' + f + ' | StartDate: ' + st);
+    }
+
     var row = [name];
     months.forEach(function (m) {
       var ms = new Date(m + '-01'), me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
