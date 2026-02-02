@@ -330,6 +330,10 @@ function buildAvailabilityMatrix(config) {
   function find(pats) { return hdr.findIndex(h => pats.some(p => new RegExp(p, 'i').test(h))); }
   var iName = find(['ResourceName', 'Resource Name']), iCountry = find(['Resource Country']), iStart = find(['Start Date']), iFTE = find(['FTE']);
 
+  Logger.log('DEBUG: Active Staff Headers: ' + JSON.stringify(hdr));
+  Logger.log('DEBUG: Column Indices - Name: ' + iName + ', Country: ' + iCountry + ', StartDate: ' + iStart + ', FTE: ' + iFTE);
+
+
   var hd = hoursSheet.getDataRange().getValues().slice(1), hmap = {};
   hd.forEach(function (r) {
     var ct = normalizeCountryCode_(r[0]);
