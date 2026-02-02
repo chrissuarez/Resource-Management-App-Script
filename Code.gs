@@ -349,6 +349,7 @@ function buildAvailabilityMatrix(config) {
   var outData = [];
   rows.forEach(function (r) {
     var name = r[iName] + ''; if (!name) return;
+    var ctCode = normalizeCountryCode_(r[iCountry]);
     var st = r[iStart] ? new Date(r[iStart]) : null;
     var fRaw = iFTE > -1 ? parseFloat(r[iFTE]) : 1.0;
     var f = isNaN(fRaw) ? 1.0 : fRaw;
