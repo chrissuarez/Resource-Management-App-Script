@@ -57,7 +57,7 @@ function importDataFromEmails() {
       var messages = threads[0].getMessages();
       var message = messages[messages.length - 1]; // Get the LATEST message in the latest thread
       var attachments = message.getAttachments();
-      var csvAttachment = attachments.find(att => att.getContentType() === 'text/csv' || att.getContentType() === 'application/csv');
+      var csvAttachment = findCsvAttachment_(attachments);
 
       if (!csvAttachment) {
         Logger.log('No CSV attachment found in the latest email for ' + config.label + '. Email subject: ' + message.getSubject());
@@ -88,6 +88,116 @@ function importDataFromEmails() {
   } catch (e) {
     Logger.log('Import error: ' + e.toString() + ' Stack: ' + e.stack);
   }
+}
+
+function findCsvAttachment_(attachments) {
+  if (!attachments || !attachments.length) return null;
+  for (var i = 0; i < attachments.length; i++) {
+    var attachment = attachments[i];
+    var contentType = (attachment.getContentType() || '').toLowerCase();
+    var name = (attachment.getName() || '').toLowerCase();
+    if (/csv/.test(contentType) || /excel/.test(contentType) || /\.csv$/i.test(name)) {
+      return attachment;
+    }
+  }
+  return null;
+}
+
+function normalizeHeaderText_(value) {
+  return (value === null || typeof value === 'undefined' ? '' : String(value))
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function findHeaderIndexByPatterns_(headers, patterns) {
+  if (!headers || !headers.length) return -1;
+  var normalized = headers.map(normalizeHeaderText_);
+  return normalized.findIndex(function (header) {
+    return patterns.some(function (pattern) {
+      return new RegExp(pattern, 'i').test(header);
+    });
+  });
+}
+
+function extractActualsImportRows_(sheet, timezone) {
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return [];
+
+  var data = sheet.getDataRange().getValues();
+  if (!data.length) return [];
+
+  var headerRowIdx = -1;
+  var idxResource = -1;
+  var idxProject = -1;
+  var idxStartDate = -1;
+  var idxDate = -1;
+
+  for (var rowIdx = 0; rowIdx < Math.min(data.length, 10); rowIdx++) {
+    var headerCandidate = data[rowIdx];
+    var resourceIdx = findHeaderIndexByPatterns_(headerCandidate, [
+      '^resource name$',
+      '^resourcename$',
+      '^resource$',
+      '^employee name$',
+      '^employee$',
+      '^user name$',
+      '^name$'
+    ]);
+    var projectIdx = findHeaderIndexByPatterns_(headerCandidate, [
+      '^project$',
+      '^project name$',
+      '^project:\\s*project name$',
+      '^project:\\s*name$',
+      '^client project$',
+      '^engagement$',
+      '^job name$'
+    ]);
+    var dateIdx = findHeaderIndexByPatterns_(headerCandidate, [
+      '^date$',
+      '^work date$',
+      '^entry date$',
+      '^week$',
+      '^month$',
+      '^period$',
+      '^end date$'
+    ]);
+    var startDateIdx = findHeaderIndexByPatterns_(headerCandidate, [
+      '^start date$',
+      '^week start$',
+      '^period start$',
+      '^from$'
+    ]);
+
+    if (resourceIdx > -1 && projectIdx > -1 && (dateIdx > -1 || startDateIdx > -1)) {
+      headerRowIdx = rowIdx;
+      idxResource = resourceIdx;
+      idxProject = projectIdx;
+      idxStartDate = startDateIdx;
+      idxDate = dateIdx;
+      break;
+    }
+  }
+
+  if (headerRowIdx === -1) {
+    Logger.log('Actuals import parsing skipped: could not detect a valid header row in "' + sheet.getName() + '".');
+    return [];
+  }
+
+  var output = [];
+  for (var i = headerRowIdx + 1; i < data.length; i++) {
+    var row = data[i];
+    var resource = idxResource > -1 ? (row[idxResource] + '').trim() : '';
+    var project = idxProject > -1 ? (row[idxProject] + '').trim() : '';
+    var startDate = idxStartDate > -1 ? coerceToDate_(row[idxStartDate], timezone) : null;
+    var dateValue = idxDate > -1 ? coerceToDate_(row[idxDate], timezone) : null;
+    if (!dateValue) dateValue = startDate;
+    if (!resource || !project || !dateValue) continue;
+    output.push([resource, project, startDate || '', dateValue]);
+  }
+
+  Logger.log('Actuals import parsed rows: ' + output.length + ' from header row ' + (headerRowIdx + 1) + ' in "' + sheet.getName() + '".');
+  return output;
 }
 
 /**
@@ -872,10 +982,8 @@ function rebuildVarianceSourceSheet_(config) {
   }
 
   if (actSheet && actSheet.getLastRow() > 1) {
-    var actValues = actSheet.getDataRange().getValues().slice(1);
+    var actValues = extractActualsImportRows_(actSheet, timezone);
     actValues.forEach(function (r) {
-      var project = (r[1] + '').trim();
-      if (!project) return;
       combined.push([r[0], r[1], r[2], r[3]]);
     });
   }
